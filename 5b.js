@@ -3166,6 +3166,7 @@ function playLevel(i) {
 }
 
 function resetLevel() {
+	toSeeCS = true;
 	HPRCBubbleFrame = 0;
 	tileDepths = [[], [], [], []];
 	if (playMode == 2) {
