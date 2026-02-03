@@ -4528,6 +4528,7 @@ function verticalProp(i, sign, prop, x, y) {
 }
 
 function horizontalProp(i, sign, prop, x, y) {
+	if (window.cheatWallClip === true) return true; // hacker
 	let xTile = Math.floor((x + char[i].w * sign) / 30);
 	if (prop <= 3 && ((sign == -1 && xTile <= -1) || (sign == 1 && xTile >= levelWidth))) {
 		return true;
