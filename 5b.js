@@ -7875,7 +7875,7 @@ function draw() {
 							!recover
 						) {
 							if (char[control].submerged == 3) char[control].swimUp(0.14 / char[control].weight2);
-							else char[control].jump(-jumpPower);
+							else char[control].jump(-jumpPower * 0.6);
 							char[control].onob = false;
 							fallOff(control);
 						}
