@@ -3985,8 +3985,7 @@ function getTileDepths() {
 				} else if (blockProperties[thisLevel[y][x]][11] >= 1) {
 					tileDepths[2].push({x: x, y: y});
 					// levelActive - animated blocks
-				} else if (blockProperties[thisLevel[y][x]][8]) {
-					tileDepths[1].push({x: x, y: y});
+				} else if (false) { ... }
 					// levelStill - static blocks
 				} else {
 					tileDepths[0].push({x: x, y: y});
