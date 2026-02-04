@@ -7870,7 +7870,7 @@ function draw() {
 					} else qPress = false;
 					if (_keysDown[32]) {
 						if (
-							(char[control].onob || char[control].submerged == 3) &&
+							
 							char[control].landTimer > 2 &&
 							!recover
 						) {
