@@ -7871,7 +7871,7 @@ function draw() {
 					if (_keysDown[32]) {
 						if (
 							
-							char[control].landTimer > 2 &&
+							char[control].landTimer > 10 &&
 							!recover
 						) {
 							if (char[control].submerged == 3) char[control].swimUp(0.14 / char[control].weight2);
