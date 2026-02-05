@@ -293,53 +293,9 @@ function loadLevels() {
 		levelStart += 2;
 
 		// Read Level Name
-		// --- Existing Code ---
-levelName[i] = '';
-
-// Assuming charAt() and charAt2() are functions defined in your environment
-for (lineLength = 0; charAt(lineLength) != -35; lineLength++) {
-    levelName[i] += charAt2(lineLength);
-}
-
-// --- New Logic Starts Here ---
-
-// 1. Define a Regex to find the pattern " (@url) "
-// This looks for " (@" followed by http/https, capturing until the closing ")"
-const linkPattern = /\(@(https?:\/\/[^)]+)\)/;
-
-// 2. Check if the constructed levelName contains the pattern
-const match = levelName[i].match(linkPattern);
-
-if (match) {
-    // match[1] contains the URL captured inside the parentheses
-    const audioUrl = match[1];
-    
-    console.log("Detected Audio Link:", audioUrl);
-
-    // 3. Play the sound
-    // Note: This creates a standard HTML5 Audio object
-    try {
-        const audio = new Audio(audioUrl);
-        
-        // Optional: Set volume or loop
-        // audio.volume = 0.5; 
-        
-        const playPromise = audio.play();
-
-        // Handle browser autoplay policies (if applicable)
-        if (playPromise !== undefined) {
-            playPromise.catch(error => {
-                console.warn("Audio playback failed (check browser autoplay policy):", error);
-            });
-        }
-    } catch (e) {
-        console.error("Error initializing audio:", e);
-    }
-
-    // 4. (Optional) Clean the name
-    // If you want to remove the link from the visible level name:
-     levelName[i] = levelName[i].replace(match[0], "").trim();
-}
+		levelName[i] = '';
+		for (lineLength = 0; charAt(lineLength) != -35; lineLength++) {
+			levelName[i] += charAt2(lineLength);
 		}
 
 		// Read Level Metadata
