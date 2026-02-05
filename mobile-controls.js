@@ -19,12 +19,13 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         </div>
         <div class="actions">
-            <div class="action-row">
+            <div class="action-row top">
                  <button data-key="82" data-code="KeyR" class="v-btn action-r">R</button>
                  <button data-key="13" data-code="Enter" class="v-btn action-enter">ENTER</button>
             </div>
-            <div class="action-row">
+            <div class="action-row bottom">
                 <button data-key="90" data-code="KeyZ" class="v-btn action-z">Z</button>
+                <button data-key="32" data-code="Space" class="v-btn action-space">JUMP</button>
             </div>
         </div>
     `;
@@ -45,11 +46,11 @@ document.addEventListener('DOMContentLoaded', () => {
             which: keyCode,
             code: code,
             key: code 
-
         });
 
         window.dispatchEvent(event);
-        document.getElementById('cnv').dispatchEvent(event);
+        const canvas = document.getElementById('cnv');
+        if(canvas) canvas.dispatchEvent(event);
     };
 
     buttons.forEach(btn => {
@@ -77,7 +78,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         btn.addEventListener('mouseleave', (e) => {
-
             triggerEvent(btn, 'keyup');
             btn.classList.remove('active');
         });
