@@ -1,22 +1,20 @@
-/* mobile-controls.js */
 document.addEventListener('DOMContentLoaded', () => {
     const showControls = true; 
     if (!showControls) return;
 
     const controlsContainer = document.createElement('div');
     controlsContainer.id = 'virtual-controls';
-    
-    // Simplified structure: D-Pad on left, Utility (R/Enter) Top Right, Action (Z/Space) Bottom Right
+
     controlsContainer.innerHTML = `
         <div class="d-pad">
             <div class="d-row"><button data-key="38" data-code="ArrowUp" class="v-btn">pickorthrow</button></div>
             <div class="d-row">
-                <button data-key="37" data-code="ArrowLeft" class="v-btn">◀</button>
+                <button data-key="37" data-code="ArrowLeft" class="v-btn">left</button>
                 <button data-key="40" data-code="ArrowDown" class="v-btn">drop</button>
-                <button data-key="39" data-code="ArrowRight" class="v-btn">▶</button>
+                <button data-key="39" data-code="ArrowRight" class="v-btn">right</button>
             </div>
         </div>
-        
+
         <div class="action-cluster">
             <div class="util-row">
                  <button data-key="82" data-code="KeyR" class="v-btn btn-r">resetlvl</button>
@@ -57,3 +55,4 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('mouseleave', handleUp);
     });
 });
+
