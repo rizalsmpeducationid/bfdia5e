@@ -57,12 +57,12 @@ p{
 
 #virtual-controls {
     position: fixed;
-    bottom: 20px;
+    bottom: 40px;
     left: 0;
     width: 100%;
     display: flex;
     justify-content: space-between;
-    padding: 0 20px;
+    padding: 0 25px;
     box-sizing: border-box;
     pointer-events: none;
     z-index: 10000;
@@ -88,25 +88,25 @@ p{
 
 .d-pad { display: flex; flex-direction: column; gap: 5px; }
 .d-row { display: flex; gap: 5px; justify-content: center; }
-.d-pad .v-btn { width: 50px; height: 50px; }
+.d-pad .v-btn { width: 60px; height: 60px; }
 
 .action-cluster { display: flex; flex-direction: column; gap: 10px; align-items: flex-end; }
 .util-row { display: flex; gap: 10px; }
 
 .btn-r { width: 45px; height: 45px; background: #d0d0ff !important; }
-.btn-enter { width: 80px; height: 45px; font-size: 12px; }
+.btn-enter { width: 90px; height: 55px; font-size: 12px; }
 
 .btn-z { 
-    width: 70px; 
-    height: 70px; 
+    width: 80px; 
+    height: 80px; 
     background: #ffd0d0 !important; 
     font-size: 24px;
     border-radius: 50%;
 }
 
 .btn-space { 
-    width: 140px; 
-    height: 60px; 
+    width: 180px; 
+    height: 100px; 
     background: #ffffcc !important; 
     font-size: 16px;
     box-shadow: 0 4px #999;
