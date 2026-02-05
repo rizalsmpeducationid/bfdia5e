@@ -4,7 +4,7 @@
 
 // Function to detect YouTube video links
 function isYouTubeUrl(url) {
-    const regex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.test(url);
+    const regex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(url);
     return regex;
 }
 
