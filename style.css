@@ -1,58 +1,125 @@
+/* taken from the original page at bfdi.tv/5b */
+* {
+	font-family: Helvetica, Arial, sans-serif;
+	text-align: center;
+	color:#666;
+	margin:0;
+	padding:0;
+}
+a{
+	color: black;
+	-webkit-transition: 0.5s ease;  
+	-moz-transition: 0.5s ease;  
+	-o-transition: 0.5s ease;  
+	transition: 0.5s ease;
+}
+a:hover{
+	color: #666;
+	-webkit-transition: 0.2s ease;  
+	-moz-transition: 0.2s ease;  
+	-o-transition: 0.2s ease;  
+	transition: 0.2s ease;
+}
+html{
+	background-color:white;
+	height:100%;
+}
+body{
+	height:100%;
+	width:960px;
+	margin:0 auto 0 auto;
+	min-height:600px;
+	position:relative;
+}
+p{
+	margin:0 0 0.7em;
+}
+#center{
+	position:absolute;
+	top:40%;
+	margin-top:-255px;
+}
+/* https://stackoverflow.com/questions/2310734/how-to-make-html-text-unselectable */
+.unselectable {
+	-webkit-touch-callout: none;
+	-webkit-user-select: none;
+	-khtml-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+}
+#hide-contenteditable {
+	width: 960px;
+	height: 540px;
+	overflow: hidden;
+	margin-bottom: 10px;
+}
+
+.crisp-edges {
+	image-rendering: -moz-crisp-edges;
+	image-rendering: -o-crisp-edges;
+	image-rendering: -webkit-optimize-contrast;
+	image-rendering: pixelated;
+	image-rendering: crisp-edges;
+	-ms-interpolation-mode: nearest-neighbor;
+}
+
+/* --- Virtual Controls Styling --- */
 #virtual-controls {
     position: fixed;
-    bottom: 20px; 
+    bottom: 20px;
     left: 0;
     width: 100%;
-    pointer-events: none;
     display: flex;
     justify-content: space-between;
-    padding: 0 30px;
+    padding: 0 20px;
     box-sizing: border-box;
-    z-index: 10000; 
+    pointer-events: none;
+    z-index: 10000;
 }
 
-#virtual-controls button {
+.v-btn {
     pointer-events: auto;
-    font-family: Arial, sans-serif;
+    background: rgba(255, 255, 255, 0.9);
+    border: 2px solid #444;
+    border-radius: 10px;
     font-weight: bold;
-    border: 1px solid #666;
-    background: rgba(255, 255, 255, 0.8);
-    border-radius: 8px;
-    color: #333;
+    color: #000;
     touch-action: manipulation;
-}
-
-#virtual-controls button.active {
-    background: #ccc;
-    transform: translateY(2px);
-}
-
-.d-pad, .actions {
     display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.d-row, .action-row {
-    display: flex;
-    gap: 8px;
+    align-items: center;
     justify-content: center;
 }
 
-.v-btn { width: 50px; height: 50px; }
-
-.action-r { background: #e0e0ff !important; width: 45px; height: 45px; }
-.action-enter { width: 80px; height: 45px; font-size: 12px; }
-
-.action-z { 
-    width: 65px; 
-    height: 65px; 
-    background: #ffe0e0 !important; 
-    font-size: 20px; 
+.v-btn.active {
+    background: #aaa !important;
+    transform: scale(0.95);
 }
-.action-space { 
-    width: 120px; 
-    height: 65px; 
-    background: #ffffcc !important; 
-    font-size: 14px;
+
+/* LEFT SIDE: D-PAD */
+.d-pad { display: flex; flex-direction: column; gap: 5px; }
+.d-row { display: flex; gap: 5px; justify-content: center; }
+.d-pad .v-btn { width: 50px; height: 50px; }
+
+/* RIGHT SIDE: ACTIONS */
+.action-cluster { display: flex; flex-direction: column; gap: 10px; align-items: flex-end; }
+.util-row { display: flex; gap: 10px; }
+
+.btn-r { width: 45px; height: 45px; background: #d0d0ff !important; }
+.btn-enter { width: 80px; height: 45px; font-size: 12px; }
+
+.btn-z { 
+    width: 70px; 
+    height: 70px; 
+    background: #ffd0d0 !important; 
+    font-size: 24px;
+    border-radius: 50%;
+}
+
+.btn-space { 
+    width: 140px; /* Made very wide */
+    height: 60px; 
+    background: #ffffcc !important; /* Yellow */
+    font-size: 16px;
+    box-shadow: 0 4px #999;
 }
