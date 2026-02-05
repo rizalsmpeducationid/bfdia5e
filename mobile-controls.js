@@ -7,24 +7,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     controlsContainer.innerHTML = `
         <div class="d-pad">
-            <div class="d-row"><button data-key="38" data-code="ArrowUp" class="v-btn">pickorthrow</button></div>
+            <div class="d-row"><button data-key="38" data-code="ArrowUp" class="v-btn">up</button></div>
             <div class="d-row">
                 <button data-key="37" data-code="ArrowLeft" class="v-btn">left</button>
-                <button data-key="40" data-code="ArrowDown" class="v-btn">drop</button>
+                <button data-key="40" data-code="ArrowDown" class="v-btn">down</button>
                 <button data-key="39" data-code="ArrowRight" class="v-btn">right</button>
             </div>
         </div>
 
         <div class="action-cluster">
             <div class="util-row">
-                 <button data-key="82" data-code="KeyR" class="v-btn btn-r">resetlvl</button>
-                 <button data-key="13" data-code="Enter" class="v-btn btn-enter">enterdialog</button>
+                 <button data-key="82" data-code="KeyR" class="v-btn btn-r">reset</button>
+                 <button data-key="13" data-code="Enter" class="v-btn btn-enter">dialog</button>
             </div>
             <div class="main-row">
-                <button data-key="90" data-code="KeyZ" class="v-btn btn-z">switchcharr</button>
+                <button data-key="90" data-code="KeyZ" class="v-btn btn-z">switch</button>
             </div>
             <div class="space-row">
-                <button data-key="32" data-code="Space" class="v-btn btn-space">jumpchar</button>
+                <button data-key="32" data-code="Space" class="v-btn btn-space">jump</button>
             </div>
         </div>
     `;
@@ -56,3 +56,24 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+document.addEventListener('DOMContentLoaded', function() {
+    const buttons = document.querySelectorAll('.v-btn');
+    
+    buttons.forEach(button => {
+        // Handle both touch and click events
+        button.addEventListener('touchstart', handleInteraction);
+        button.addEventListener('mousedown', handleInteraction);
+    });
+    
+    function handleInteraction(e) {
+        const button = e.currentTarget;
+        
+        // Add the interacted class
+        button.classList.add('interacted');
+        
+        // Remove the class after 3 seconds
+        setTimeout(() => {
+            button.classList.remove('interacted');
+        }, 3000);
+    }
+});
