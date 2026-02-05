@@ -470,6 +470,123 @@ function loadLevelpack(levelData) {
 		mdao[lvl] = mdao2;
 		// i++;
 	}
+	// Add this code after the loadLevelpack() function (around line 473)
+// YouTube Link Detection and Modal Popup Handler
+
+// Regular expressions to detect YouTube URLs
+const youtubeUrlRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]{11})/gi;
+const youtubeVideoIdRegex = /([\w-]{11})$/;
+
+/**
+ * Extract video ID from YouTube URL
+ * @param {string} url - The YouTube URL
+ * @returns {string|null} - Video ID or null if not found
+ */
+function extractYouTubeVideoId(url) {
+    const match = url.match(youtubeVideoIdRegex);
+    return match ? match[1] : null;
+}
+
+/**
+ * Create and show YouTube modal popup with embedded iframe
+ * @param {string} videoId - YouTube video ID
+ */
+function showYouTubeModal(videoId) {
+    // Remove any existing modal
+    const existingModal = document.getElementById('youtubeModal');
+    if (existingModal) existingModal.remove();
+
+    // Create modal container
+    const modal = document.createElement('div');
+    modal.id = 'youtubeModal';
+    modal.className = 'youtube-modal';
+    modal.innerHTML = `
+        <div class="youtube-modal-content">
+            <div class="youtube-modal-header">
+                <h2>YouTube Video</h2>
+                <button class="youtube-modal-close" onclick="document.getElementById('youtubeModal').remove();">&times;</button>
+            </div>
+            <div class="youtube-modal-body">
+                <iframe 
+                    width="100%" 
+                    height="500" 
+                    src="https://www.youtube.com/embed/${videoId}" 
+                    title="YouTube video player" 
+                    frameborder="0" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                    allowfullscreen>
+                </iframe>
+            </div>
+            <div class="youtube-modal-footer">
+                <button class="youtube-modal-btn" onclick="document.getElementById('youtubeModal').remove();">Close</button>
+                <button class="youtube-modal-btn youtube-modal-btn-primary" onclick="window.open('https://www.youtube.com/watch?v=${videoId}', '_blank');">
+                    Open in YouTube
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Make sure modal is visible
+    setTimeout(() => {
+        modal.classList.add('show');
+    }, 10);
+}
+
+/**
+ * Check dialogue for YouTube links and show modal if found
+ * This is called after a level is loaded
+ */
+function checkDialogueForYouTubeLinks() {
+    // Get current level's dialogue
+    let currentLevelDialogue = dialogueText[levelProgress];
+    
+    if (!currentLevelDialogue || currentLevelDialogue.length === 0) {
+        return false;
+    }
+
+    // Check each dialogue line for YouTube links
+    for (let i = 0; i < currentLevelDialogue.length; i++) {
+        let dialogueLine = currentLevelDialogue[i];
+        
+        if (dialogueLine && typeof dialogueLine === 'string') {
+            // Test if line contains YouTube URL
+            if (youtubeUrlRegex.test(dialogueLine)) {
+                // Reset regex lastIndex
+                youtubeUrlRegex.lastIndex = 0;
+                
+                // Find the URL
+                let match = youtubeUrlRegex.exec(dialogueLine);
+                if (match) {
+                    let videoId = extractYouTubeVideoId(match[0]);
+                    if (videoId) {
+                        console.log(`YouTube video detected in dialogue line ${i}: ${videoId}`);
+                        
+                        // Show modal after a small delay to ensure DOM is ready
+                        setTimeout(() => {
+                            showYouTubeModal(videoId);
+                        }, 300);
+                        
+                        return true;
+                    }
+                }
+            }
+            youtubeUrlRegex.lastIndex = 0; // Reset for next iteration
+        }
+    }
+    
+    return false;
+}
+
+// Hook into the level loading system
+// Modify the playLevel() function call to include YouTube check
+// Find: function playLevel() { 
+// And add this at the end of the function: checkDialogueForYouTubeLinks();
+
+// If using levelpack (explore 5beam), also check there:
+// Find: loadLevelpack function completion
+// And add: checkDialogueForYouTubeLinks();
 }
 
 // [0]  - collide down
