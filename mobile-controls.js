@@ -9,24 +9,24 @@ document.addEventListener('DOMContentLoaded', () => {
     // Simplified structure: D-Pad on left, Utility (R/Enter) Top Right, Action (Z/Space) Bottom Right
     controlsContainer.innerHTML = `
         <div class="d-pad">
-            <div class="d-row"><button data-key="38" data-code="ArrowUp" class="v-btn">▲</button></div>
+            <div class="d-row"><button data-key="38" data-code="ArrowUp" class="v-btn">pickorthrow</button></div>
             <div class="d-row">
                 <button data-key="37" data-code="ArrowLeft" class="v-btn">◀</button>
-                <button data-key="40" data-code="ArrowDown" class="v-btn">▼</button>
+                <button data-key="40" data-code="ArrowDown" class="v-btn">drop</button>
                 <button data-key="39" data-code="ArrowRight" class="v-btn">▶</button>
             </div>
         </div>
         
         <div class="action-cluster">
             <div class="util-row">
-                 <button data-key="82" data-code="KeyR" class="v-btn btn-r">R</button>
-                 <button data-key="13" data-code="Enter" class="v-btn btn-enter">ENTER</button>
+                 <button data-key="82" data-code="KeyR" class="v-btn btn-r">resetlvl</button>
+                 <button data-key="13" data-code="Enter" class="v-btn btn-enter">enterdialog</button>
             </div>
             <div class="main-row">
-                <button data-key="90" data-code="KeyZ" class="v-btn btn-z">Z</button>
+                <button data-key="90" data-code="KeyZ" class="v-btn btn-z">switchcharr</button>
             </div>
             <div class="space-row">
-                <button data-key="32" data-code="Space" class="v-btn btn-space">JUMP (SPACE)</button>
+                <button data-key="32" data-code="Space" class="v-btn btn-space">jumpchar</button>
             </div>
         </div>
     `;
