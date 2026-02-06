@@ -5,27 +5,27 @@ document.addEventListener('DOMContentLoaded', () => {
     const controlsContainer = document.createElement('div');
     controlsContainer.id = 'virtual-controls';
 
-    // Note: Removed the wrapping flexbox layout since we are using absolute positioning now
+    // Note: Added IDs to each button for individual tracking
     controlsContainer.innerHTML = `
-        <div class="d-pad" id="drag-dpad">
-            <div class="d-row"><button data-key="38" data-code="ArrowUp" class="v-btn">up</button></div>
+        <div class="d-pad">
+            <div class="d-row"><button id="btn-up" data-key="38" data-code="ArrowUp" class="v-btn">up</button></div>
             <div class="d-row">
-                <button data-key="37" data-code="ArrowLeft" class="v-btn">left</button>
-                <button data-key="40" data-code="ArrowDown" class="v-btn">down</button>
-                <button data-key="39" data-code="ArrowRight" class="v-btn">right</button>
+                <button id="btn-left" data-key="37" data-code="ArrowLeft" class="v-btn">left</button>
+                <button id="btn-down" data-key="40" data-code="ArrowDown" class="v-btn">down</button>
+                <button id="btn-right" data-key="39" data-code="ArrowRight" class="v-btn">right</button>
             </div>
         </div>
 
-        <div class="action-cluster" id="drag-actions">
+        <div class="action-cluster">
             <div class="util-row">
-                 <button data-key="82" data-code="KeyR" class="v-btn btn-r">reset</button>
-                 <button data-key="13" data-code="Enter" class="v-btn btn-enter">dialog</button>
+                 <button id="btn-r" data-key="82" data-code="KeyR" class="v-btn btn-r">reset</button>
+                 <button id="btn-enter" data-key="13" data-code="Enter" class="v-btn btn-enter">dialog</button>
             </div>
             <div class="main-row">
-                <button data-key="90" data-code="KeyZ" class="v-btn btn-z">switch</button>
+                <button id="btn-z" data-key="90" data-code="KeyZ" class="v-btn btn-z">switch</button>
             </div>
             <div class="space-row">
-                <button data-key="32" data-code="Space" class="v-btn btn-space">jump</button>
+                <button id="btn-space" data-key="32" data-code="Space" class="v-btn btn-space">jump</button>
             </div>
         </div>
     `;
@@ -48,16 +48,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     buttons.forEach(btn => {
         const handleDown = (e) => { 
-            // Only trigger if we aren't actively dragging (simple check)
-            if(!btn.closest('.dragging')) {
-                // e.preventDefault(); // Commented out to allow drag start propagation
+            // Only trigger if we aren't actively dragging
+            if(!btn.classList.contains('dragging')) {
                 triggerEvent(btn, 'keydown'); 
                 btn.classList.add('active'); 
-                handleInteraction(e); // Added interaction effect
+                handleInteraction(e);
             }
         };
         const handleUp = (e) => { 
-            // e.preventDefault(); 
             triggerEvent(btn, 'keyup'); 
             btn.classList.remove('active'); 
         };
@@ -78,45 +76,58 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 3000);
     }
 
-    // --- DRAG & DROP LOGIC ---
-    const dPad = document.getElementById('drag-dpad');
-    const actions = document.getElementById('drag-actions');
+    // --- DRAG & DROP LOGIC (INDIVIDUAL) ---
+    
+    // 1. Define Default Positions for every button 
+    // (These mimic your original layout but can now be moved individually)
+    const defaultPositions = {
+        'btn-up':    { left: '85px',  top: 'calc(100% - 240px)' },
+        'btn-left':  { left: '20px',  top: 'calc(100% - 170px)' },
+        'btn-down':  { left: '85px',  top: 'calc(100% - 170px)' },
+        'btn-right': { left: '150px', top: 'calc(100% - 170px)' },
+        
+        'btn-r':     { left: 'calc(100% - 160px)', top: 'calc(100% - 320px)' }, // Reset
+        'btn-enter': { left: 'calc(100% - 100px)', top: 'calc(100% - 320px)' }, // Dialog
+        'btn-z':     { left: 'calc(100% - 100px)', top: 'calc(100% - 230px)' }, // Switch
+        'btn-space': { left: 'calc(100% - 300px)', top: 'calc(100% - 120px)' }, // Jump
+    };
 
-    // Function to set initial position
-    function setInitialPosition(el, storageKey, defaultLeft, defaultBottom) {
+    function setInitialPosition(el) {
+        const storageKey = 'pos_' + el.id;
         const savedPos = localStorage.getItem(storageKey);
+        
         if (savedPos) {
             const pos = JSON.parse(savedPos);
             el.style.left = pos.left;
             el.style.top = pos.top;
-        } else {
-            // Default positions if never saved
-            el.style.left = defaultLeft;
-            el.style.top = `calc(100% - ${defaultBottom})`; 
+        } else if (defaultPositions[el.id]) {
+            el.style.left = defaultPositions[el.id].left;
+            el.style.top = defaultPositions[el.id].top;
         }
     }
 
-    // Initialize positions (Default: Dpad left, Actions right)
-    // Adjust these pixel values to match your preferred default layout
-    setInitialPosition(dPad, 'pos_dpad', '20px', '250px'); 
-    setInitialPosition(actions, 'pos_actions', 'calc(100% - 300px)', '250px');
-
     // Drag Handler
-    function makeDraggable(el, storageKey) {
+    function makeDraggable(el) {
+        const storageKey = 'pos_' + el.id;
         let isDragging = false;
         let startX, startY, initialLeft, initialTop;
 
-        el.classList.add('draggable'); // Add visual cue
+        el.classList.add('draggable');
 
         const onStart = (e) => {
-            // Check if user is trying to press a button or drag the container
-            // We allow dragging from anywhere in the container
-            isDragging = true;
-            el.classList.add('dragging'); // Flag to prevent button misfire if needed
+            // Drag starts on long press or immediate depending on preference
+            // Here we allow immediate drag but use a flag to prevent click events if moved
             
             const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
             const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
 
+            // Only start drag if we hit the element directly
+            // (Optional: You could require a specific part of the button to be the handle, 
+            // but for mobile controls, dragging the whole button is standard)
+            
+            isDragging = true;
+            el.classList.add('dragging'); 
+            
             startX = clientX;
             startY = clientY;
 
@@ -124,12 +135,14 @@ document.addEventListener('DOMContentLoaded', () => {
             initialLeft = rect.left;
             initialTop = rect.top;
 
-            e.preventDefault(); // Prevent scrolling while dragging controls
+            // e.preventDefault(); // Careful: preventing default here might stop button clicks if not handled right
         };
 
         const onMove = (e) => {
             if (!isDragging) return;
             
+            e.preventDefault(); // Prevent scrolling while dragging
+
             const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
             const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
 
@@ -143,7 +156,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const onEnd = () => {
             if (!isDragging) return;
             isDragging = false;
-            el.classList.remove('dragging');
+            
+            // Small delay to remove 'dragging' class so the click handler knows we were dragging
+            setTimeout(() => {
+                el.classList.remove('dragging');
+            }, 50);
 
             // Save Position
             const pos = {
@@ -163,7 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window.addEventListener('mouseup', onEnd);
         window.addEventListener('touchend', onEnd);
 
-        // Return a cleanup function to remove listeners later
+        // Cleanup function
         return () => {
             el.classList.remove('draggable');
             el.removeEventListener('mousedown', onStart);
@@ -175,14 +192,17 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // Activate Dragging
-    const cleanDpad = makeDraggable(dPad, 'pos_dpad');
-    const cleanActions = makeDraggable(actions, 'pos_actions');
+    // Initialize all buttons
+    const cleanupFunctions = [];
+    buttons.forEach(btn => {
+        setInitialPosition(btn);
+        const clean = makeDraggable(btn);
+        cleanupFunctions.push(clean);
+    });
 
     // --- LOCK CONTROLS AFTER 15 SECONDS ---
     setTimeout(() => {
         console.log("Locking controls...");
-        cleanDpad();    // Remove listeners for D-pad
-        cleanActions(); // Remove listeners for Actions
-    }, 15000); // 15000 ms = 15 seconds
+        cleanupFunctions.forEach(fn => fn()); // Remove drag listeners from all buttons
+    }, 15000); 
 });
