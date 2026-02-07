@@ -46,51 +46,6 @@ p{
 	margin-bottom: 10px;
 }
 
-#controls {
-	margin-bottom: 10px;
-}
-
-#fullscreen-toggle {
-	background: #c92b20;
-	border: none;
-	border-radius: 4px;
-	color: #fff;
-	cursor: pointer;
-	font-size: 14px;
-	padding: 8px 14px;
-}
-
-#fullscreen-toggle:hover {
-	background: #a5241b;
-}
-
-#fullscreen-toggle:focus-visible {
-	outline: 3px solid #333;
-	outline-offset: 2px;
-}
-
-#hide-contenteditable:fullscreen {
-	width: 100%;
-	height: 100%;
-	margin: 0;
-}
-
-#hide-contenteditable:fullscreen canvas {
-	width: 100%;
-	height: 100%;
-}
-
-#hide-contenteditable:-webkit-full-screen {
-	width: 100%;
-	height: 100%;
-	margin: 0;
-}
-
-#hide-contenteditable:-webkit-full-screen canvas {
-	width: 100%;
-	height: 100%;
-}
-
 .crisp-edges {
 	image-rendering: -moz-crisp-edges;
 	image-rendering: -o-crisp-edges;
