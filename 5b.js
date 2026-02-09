@@ -19,7 +19,7 @@ let canvas;
 let ctx;
 const cwidth = 1920;
 const cheight = 1080;
-let pixelRatio = 2;
+let pixelRatio = -2;
 let addedZoom = 1;
 let highQual = true;
 const requestAnimationFrame = window.requestAnimationFrame || window.mozRequestAnimationFrame || window.webkitRequestAnimationFrame || window.msRequestAnimationFrame;
