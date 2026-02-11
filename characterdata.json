@@ -16,7 +16,7 @@
   "mechanics": {
     "has_arms": true,
     "movement": {
-      "speed": 24,
+      "speed": 1,
       "jump_height": 4.0
     },
     "collision": {
