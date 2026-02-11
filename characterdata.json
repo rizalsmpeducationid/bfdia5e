@@ -34,5 +34,5 @@
       "burn_threshold_celsius": 150
     }
   },
-  "placeholder_color": "#6e88ff"
+  "placeholder_gif_path": "data/newchar/firey.gif"
 }

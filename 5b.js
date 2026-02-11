@@ -2329,33 +2329,13 @@ function clamp(value, min, max) {
 	return Math.min(Math.max(value, min), max);
 }
 
-function parseHexColor(color, fallback = '#5f8bff') {
-	if (typeof color !== 'string') return fallback;
-	if (!/^#[0-9a-fA-F]{6}$/.test(color)) return fallback;
-	return color;
-}
-
-function shadeHexColor(hex, factor) {
-	let r = parseInt(hex.slice(1, 3), 16);
-	let g = parseInt(hex.slice(3, 5), 16);
-	let b = parseInt(hex.slice(5, 7), 16);
-	r = Math.round(clamp(r * factor, 0, 255));
-	g = Math.round(clamp(g * factor, 0, 255));
-	b = Math.round(clamp(b * factor, 0, 255));
-	return `rgb(${r}, ${g}, ${b})`;
-}
-
-function createPlaceholderCharacterFrame(charWidth, charHeight, baseColor, shadeFactor) {
-	let frame = document.createElement('canvas');
-	frame.width = Math.max(1, Math.round(charWidth * scaleFactor));
-	frame.height = Math.max(1, Math.round(charHeight * scaleFactor));
-	let frameCtx = frame.getContext('2d');
-	frameCtx.fillStyle = shadeHexColor(baseColor, shadeFactor);
-	frameCtx.fillRect(0, 0, frame.width, frame.height);
-	frameCtx.strokeStyle = shadeHexColor(baseColor, 0.65);
-	frameCtx.lineWidth = Math.max(1, Math.round(2 * scaleFactor));
-	frameCtx.strokeRect(frameCtx.lineWidth / 2, frameCtx.lineWidth / 2, frame.width - frameCtx.lineWidth, frame.height - frameCtx.lineWidth);
-	return frame;
+function loadExternalImage(path) {
+	return new Promise((resolve, reject) => {
+		let img = new Image();
+		img.onload = () => resolve(img);
+		img.onerror = reject;
+		img.src = path;
+	});
 }
 
 function registerCustomCharacter(characterConfig) {
@@ -2374,10 +2354,7 @@ function registerCustomCharacter(characterConfig) {
 	let heatSeconds = Number(characterConfig.environment_stats?.thermal_resistance?.max_heat_duration_seconds);
 	let heatSpeed = clamp(Number.isFinite(heatSeconds) && heatSeconds > 0 ? 50 / heatSeconds : 1, 0.2, 8);
 	let hasArms = characterConfig.mechanics?.has_arms !== false;
-	let baseColor = parseHexColor(characterConfig.placeholder_color, '#6e88ff');
-	let frameCount = 4;
-	let shades = [1, 0.92, 1.08, 0.98];
-	let spriteFrames = shades.map(shade => createPlaceholderCharacterFrame(halfWidth * 2, fullHeight, baseColor, shade));
+	let gifPath = characterConfig.placeholder_gif_path || 'data/newchar/firey.gif';
 
 	let charId = charD.length;
 	charD.push([
@@ -2388,7 +2365,7 @@ function registerCustomCharacter(characterConfig) {
 		friction,
 		true,
 		heatSpeed,
-		frameCount,
+		1,
 		hasArms,
 		10
 	]);
@@ -2399,10 +2376,10 @@ function registerCustomCharacter(characterConfig) {
 		charimgmat: {a:0.4,b:0,c:0,d:0.4,tx:0,ty:0}
 	});
 	customCharacterSpriteData[charId] = {
-		frames: spriteFrames,
-		vb: shades.map(() => [-halfWidth, -fullHeight, halfWidth * 2, fullHeight])
+		gifPath,
+		vb: [-halfWidth, -fullHeight, halfWidth * 2, fullHeight]
 	};
-	console.log(`[Custom Character] Registered "${displayName}" as id ${charId}.`);
+	console.log(`[Custom Character] Registered "${displayName}" as id ${charId} using gif: ${gifPath}`);
 }
 
 function getPixelRatio(quality) {
@@ -2494,7 +2471,12 @@ async function loadingScreen() {
 	}
 	for (let i = 0; i < charD.length; i++) {
 		if (typeof customCharacterSpriteData[i] !== 'undefined') {
-			svgChars[i] = customCharacterSpriteData[i].frames;
+			try {
+				svgChars[i] = await loadExternalImage(customCharacterSpriteData[i].gifPath);
+			} catch (error) {
+				console.warn(`[Custom Character] Failed to load ${customCharacterSpriteData[i].gifPath}; using fallback sprite.`, error);
+				svgChars[i] = await createImage(resourceData['entities/e0000.svg']);
+			}
 			svgCharsVB[i] = customCharacterSpriteData[i].vb;
 			continue;
 		}
