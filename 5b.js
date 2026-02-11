@@ -2249,6 +2249,7 @@ let svgShadows = new Array(19);
 let svgTileBorders = new Array(38);
 let svgChars = new Array(charD.length);
 let svgBodyParts = new Array(63);
+let customCharacterSpriteData = {};
 let svgHPRCBubble = new Array(5);
 let svgCSBubble;
 let svgHPRCCrank;
@@ -2324,6 +2325,86 @@ function getVB(base64) {
 	return svg.getAttribute('viewBox').split(' ').map(Number);
 }
 
+function clamp(value, min, max) {
+	return Math.min(Math.max(value, min), max);
+}
+
+function parseHexColor(color, fallback = '#5f8bff') {
+	if (typeof color !== 'string') return fallback;
+	if (!/^#[0-9a-fA-F]{6}$/.test(color)) return fallback;
+	return color;
+}
+
+function shadeHexColor(hex, factor) {
+	let r = parseInt(hex.slice(1, 3), 16);
+	let g = parseInt(hex.slice(3, 5), 16);
+	let b = parseInt(hex.slice(5, 7), 16);
+	r = Math.round(clamp(r * factor, 0, 255));
+	g = Math.round(clamp(g * factor, 0, 255));
+	b = Math.round(clamp(b * factor, 0, 255));
+	return `rgb(${r}, ${g}, ${b})`;
+}
+
+function createPlaceholderCharacterFrame(charWidth, charHeight, baseColor, shadeFactor) {
+	let frame = document.createElement('canvas');
+	frame.width = Math.max(1, Math.round(charWidth * scaleFactor));
+	frame.height = Math.max(1, Math.round(charHeight * scaleFactor));
+	let frameCtx = frame.getContext('2d');
+	frameCtx.fillStyle = shadeHexColor(baseColor, shadeFactor);
+	frameCtx.fillRect(0, 0, frame.width, frame.height);
+	frameCtx.strokeStyle = shadeHexColor(baseColor, 0.65);
+	frameCtx.lineWidth = Math.max(1, Math.round(2 * scaleFactor));
+	frameCtx.strokeRect(frameCtx.lineWidth / 2, frameCtx.lineWidth / 2, frame.width - frameCtx.lineWidth, frame.height - frameCtx.lineWidth);
+	return frame;
+}
+
+function registerCustomCharacter(characterConfig) {
+	if (!characterConfig || typeof characterConfig !== 'object') return;
+
+	let displayName = characterConfig.display_name || characterConfig.character_id || 'Custom Character';
+	let hitbox = characterConfig.mechanics?.collision?.hitbox || {};
+	let hitboxWidth = clamp(Number(hitbox.width) || 32, 8, 200);
+	let hitboxHeight = clamp(Number(hitbox.height) || 64, 8, 300);
+	let characterScale = clamp(Number(characterConfig.mechanics?.collision?.character_scale) || 1, 0.2, 4);
+
+	let halfWidth = (hitboxWidth * characterScale) / 2;
+	let fullHeight = hitboxHeight * characterScale;
+	let speed = Number(characterConfig.mechanics?.movement?.speed);
+	let friction = clamp(Number.isFinite(speed) ? 0.9 - speed * 0.03 : 0.78, 0.45, 0.9);
+	let heatSeconds = Number(characterConfig.environment_stats?.thermal_resistance?.max_heat_duration_seconds);
+	let heatSpeed = clamp(Number.isFinite(heatSeconds) && heatSeconds > 0 ? 50 / heatSeconds : 1, 0.2, 8);
+	let hasArms = characterConfig.mechanics?.has_arms !== false;
+	let baseColor = parseHexColor(characterConfig.placeholder_color, '#6e88ff');
+	let frameCount = 4;
+	let shades = [1, 0.92, 1.08, 0.98];
+	let spriteFrames = shades.map(shade => createPlaceholderCharacterFrame(halfWidth * 2, fullHeight, baseColor, shade));
+
+	let charId = charD.length;
+	charD.push([
+		halfWidth,
+		fullHeight,
+		0.4,
+		Math.round(fullHeight * 0.45),
+		friction,
+		true,
+		heatSpeed,
+		frameCount,
+		hasArms,
+		10
+	]);
+	names.push(displayName);
+	charModels.push({
+		firemat: {a:-0.35,b:0,c:0,d:0.35,tx:0,ty:-fullHeight * 0.55},
+		burstmat: {a:1,b:0,c:0,d:1,tx:0,ty:-fullHeight * 0.6},
+		charimgmat: {a:0.4,b:0,c:0,d:0.4,tx:0,ty:0}
+	});
+	customCharacterSpriteData[charId] = {
+		frames: spriteFrames,
+		vb: shades.map(() => [-halfWidth, -fullHeight, halfWidth * 2, fullHeight])
+	};
+	console.log(`[Custom Character] Registered "${displayName}" as id ${charId}.`);
+}
+
 function getPixelRatio(quality) {
 	// Round the device pixel ratio to the nearest integer in log base 2
 	// This is so that if you have the page zoomed or have some scale factor on Windows
@@ -2365,6 +2446,16 @@ async function loadingScreen() {
 	levelsString = await req.text();
 	loadLevels();
 
+	try {
+		let customCharacterReq = await fetch('characterdata.json');
+		if (customCharacterReq.ok) {
+			let customCharacterData = await customCharacterReq.json();
+			registerCustomCharacter(customCharacterData);
+		}
+	} catch (error) {
+		console.warn('[Custom Character] Failed to load characterdata.json:', error);
+	}
+
 	req = await fetch('data/images6.json');
 	let resourceData = await req.json();
 
@@ -2402,6 +2493,11 @@ async function loadingScreen() {
 		svgTileBorders[i] = await createImage(resourceData['borders/tb' + i.toString().padStart(4, '0') + '.svg']);
 	}
 	for (let i = 0; i < charD.length; i++) {
+		if (typeof customCharacterSpriteData[i] !== 'undefined') {
+			svgChars[i] = customCharacterSpriteData[i].frames;
+			svgCharsVB[i] = customCharacterSpriteData[i].vb;
+			continue;
+		}
 		let id = i.toString().padStart(4, '0');
 		if (charD[i][7] < 1) continue;
 		else if (charD[i][7] == 1) {
@@ -3878,7 +3974,7 @@ function drawCutScene() {
 		ctx.fillStyle = '#ce6fce';
 		ctx.fillRect(bubLoc.x + 10, bubLoc.y + 10, 80, 80);
 		ctx.save();
-		let charimg = svgChars[char[currdiachar].id];
+		let charimg = Array.isArray(svgChars[char[currdiachar].id]) ? svgChars[char[currdiachar].id][0] : svgChars[char[currdiachar].id];
 		if (Array.isArray(charimg)) charimg = charimg[0];
 		let charimgmat = charModels[char[currdiachar].id].charimgmat;
 		ctx.transform(
@@ -3916,7 +4012,7 @@ function drawHPRCBubbleCharImg(dead, sc, xoff) {
 		(charimgmat.tx * sc) / 2 + xoff,
 		(charimgmat.ty * sc) / 2 - 44
 	);
-	let charimg = svgChars[char[dead].id];
+	let charimg = Array.isArray(svgChars[char[dead].id]) ? svgChars[char[dead].id][0] : svgChars[char[dead].id];
 	if (Array.isArray(charimg)) charimg = charimg[0];
 	ctx.drawImage(charimg, -charimg.width / (scaleFactor*2), -charimg.height / (scaleFactor*2), charimg.width / scaleFactor, charimg.height / scaleFactor);
 	ctx.restore();
@@ -5742,7 +5838,7 @@ function drawLCCharInfo(i, y) {
 	ctx.fillRect(665 + 240 - charInfoHeight * 1.5, y, charInfoHeight * 1.5, charInfoHeight);
 	let charimgmat = charModels[myLevelChars[1][i][0]].charimgmat;
 	if (typeof charimgmat !== 'undefined') {
-		let charimg = svgChars[myLevelChars[1][i][0]];
+		let charimg = Array.isArray(svgChars[myLevelChars[1][i][0]]) ? svgChars[myLevelChars[1][i][0]][0] : svgChars[myLevelChars[1][i][0]];
 		if (Array.isArray(charimg)) charimg = charimg[0];
 		let sc = charInfoHeight / 32;
 		ctx.save();
@@ -9410,7 +9506,7 @@ function draw() {
 
 				let charimgmat = charModels[dialogueTabCharHoverChar].charimgmat;
 				if (typeof charimgmat !== 'undefined') {
-					let charimg = svgChars[dialogueTabCharHoverChar];
+					let charimg = Array.isArray(svgChars[dialogueTabCharHoverChar]) ? svgChars[dialogueTabCharHoverChar][0] : svgChars[dialogueTabCharHoverChar];
 					if (Array.isArray(charimg)) charimg = charimg[0];
 					let sc = charInfoHeight / 32;
 					ctx.save();

@@ -2,7 +2,6 @@
   "character_id": "bot_v1_0",
   "display_name": "Unit 7",
   "thumbnail_path": "assets/sprites/ui/thumbnails/unit7.png",
-  
   "animations": {
     "base_directory": "assets/sprites/characters/unit7/",
     "states": {
@@ -14,7 +13,6 @@
       "holding_object": "anim_hold.json"
     }
   },
-
   "mechanics": {
     "has_arms": true,
     "movement": {
@@ -30,11 +28,11 @@
       }
     }
   },
-
   "environment_stats": {
     "thermal_resistance": {
       "max_heat_duration_seconds": 45.0,
       "burn_threshold_celsius": 150
     }
-  }
+  },
+  "placeholder_color": "#6e88ff"
 }
