@@ -1,0 +1,40 @@
+{
+  "character_id": "bot_v1_0",
+  "display_name": "Unit 7",
+  "thumbnail_path": "assets/sprites/ui/thumbnails/unit7.png",
+  
+  "animations": {
+    "base_directory": "assets/sprites/characters/unit7/",
+    "states": {
+      "idle": "anim_idle.json",
+      "walk": "anim_walk.json",
+      "jump": "anim_jump.json",
+      "falling": "anim_falling.json",
+      "talking": "anim_talk.json",
+      "holding_object": "anim_hold.json"
+    }
+  },
+
+  "mechanics": {
+    "has_arms": true,
+    "movement": {
+      "speed": 5.5,
+      "jump_height": 12.0
+    },
+    "collision": {
+      "character_scale": 1.0,
+      "hitbox": {
+        "width": 32,
+        "height": 64,
+        "offset_y": 0
+      }
+    }
+  },
+
+  "environment_stats": {
+    "thermal_resistance": {
+      "max_heat_duration_seconds": 45.0,
+      "burn_threshold_celsius": 150
+    }
+  }
+}
