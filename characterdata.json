@@ -1,6 +1,6 @@
 {
-  "character_id": "bot_v1_0",
-  "display_name": "Unit 7",
+  "character_id": "firey",
+  "display_name": "firey",
   "thumbnail_path": "assets/sprites/ui/thumbnails/unit7.png",
   "animations": {
     "base_directory": "assets/sprites/characters/unit7/",
