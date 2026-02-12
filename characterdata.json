@@ -37,11 +37,11 @@
   "placeholder_gif_path": "data/newchar/firey.gif"
 }
 {
-  "character_id": "firey",
-  "display_name": "firey",
-  "thumbnail_path": "assets/sprites/ui/thumbnails/unit7.png",
+  "character_id": "leafy",
+  "display_name": "lefy",
+  "thumbnail_path": "assets/sprites/ui/thumbnails/unit8.png",
   "animations": {
-    "base_directory": "assets/sprites/characters/unit7/",
+    "base_directory": "assets/sprites/characters/unit8/",
     "states": {
       "idle": "anim_idle.json",
       "walk": "anim_walk.json",
@@ -72,5 +72,5 @@
       "burn_threshold_celsius": 150
     }
   },
-  "placeholder_gif_path": "data/newchar/firey.gif"
+  "placeholder_gif_path": "data/newchar/leafy.gif"
 }
