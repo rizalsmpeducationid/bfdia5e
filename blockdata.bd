@@ -6,6 +6,7 @@ collision : up, down, left, right
 isswimmable: false
 isdeadly: false
 size: 1, 1
+id: "Ͳ"
 
 tile.
 name: grasstile
@@ -15,4 +16,4 @@ collision : -
 isswimmable: false
 isdeadly: false
 size: 1, 1
-
+id: "♳"
