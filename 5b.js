@@ -2368,10 +2368,75 @@ function normalizeTileCanvas(image, tileSize = 30) {
 	return tileCanvas;
 }
 
+function parseLooseBlockValue(valueRaw) {
+	let value = valueRaw.trim();
+	if (value.length == 0) return '';
+	if ((value[0] == '"' && value[value.length - 1] == '"') || (value[0] == "'" && value[value.length - 1] == "'")) {
+		return value.substring(1, value.length - 1);
+	}
+	if (value == 'true') return true;
+	if (value == 'false') return false;
+	if (value == 'null') return null;
+	if (!Number.isNaN(Number(value)) && value != '') return Number(value);
+	if ((value[0] == '[' && value[value.length - 1] == ']') || (value[0] == '{' && value[value.length - 1] == '}')) {
+		try {
+			return JSON.parse(value.replace(/'/g, '"'));
+		} catch (error) {
+			return value;
+		}
+	}
+	return value;
+}
+
+function parseLooseBlockData(raw) {
+	let lines = raw.replace(/\r/g, '').split('\n');
+	let groups = {};
+	let orderedKeys = [];
+
+	for (let i = 0; i < lines.length; i++) {
+		let line = lines[i].trim();
+		if (line.length == 0 || line.startsWith('//') || line.startsWith('#')) continue;
+		let kv = line.match(/^([A-Za-z0-9_.-]+)\s*:\s*(.+)$/);
+		if (!kv) continue;
+		let key = kv[1];
+		let value = parseLooseBlockValue(kv[2]);
+
+		let groupKey = 'tile';
+		let propKey = key;
+		let g = key.match(/^tile(?:([0-9]+))?\.(.+)$/i);
+		if (g) {
+			groupKey = g[1] ? `tile${g[1]}` : 'tile';
+			propKey = g[2];
+		}
+
+		if (typeof groups[groupKey] === 'undefined') {
+			groups[groupKey] = {};
+			orderedKeys.push(groupKey);
+		}
+		groups[groupKey][propKey] = value;
+	}
+
+	let tiles = [];
+	for (let i = 0; i < orderedKeys.length; i++) {
+		let key = orderedKeys[i];
+		let tile = groups[key];
+		if (tile && Object.keys(tile).length > 0) tiles.push(tile);
+	}
+	return tiles;
+}
+
 function parseBlockData(raw) {
-	let parsed = JSON.parse(raw);
-	if (Array.isArray(parsed)) return parsed;
-	if (Array.isArray(parsed.tiles)) return parsed.tiles;
+	let cleaned = raw.trim().replace(/^\uFEFF/, '');
+	try {
+		let parsed = JSON.parse(cleaned);
+		if (Array.isArray(parsed)) return parsed;
+		if (Array.isArray(parsed.tiles)) return parsed.tiles;
+	} catch (jsonError) {
+		// Fallback for .bd loose format (e.g. tile.name: Example)
+	}
+	let loose = parseLooseBlockData(cleaned);
+	if (loose.length > 0) return loose;
+	console.warn('[Custom Tiles] blockdata.bd was loaded, but no valid tile records were found.');
 	return [];
 }
 
@@ -2512,16 +2577,6 @@ async function loadingScreen() {
 	levelsString = await req.text();
 	loadLevels();
 	await loadBlockDataFile();
-
-	try {
-		let customCharacterReq = await fetch('characterdata.json');
-		if (customCharacterReq.ok) {
-			let customCharacterData = await customCharacterReq.json();
-			registerCustomCharacter(customCharacterData);
-		}
-	} catch (error) {
-		console.warn('[Custom Character] Failed to load characterdata.json:', error);
-	}
 
 	try {
 		let customCharacterReq = await fetch('characterdata.json');
