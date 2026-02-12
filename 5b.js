@@ -2674,6 +2674,77 @@ function registerCustomCharacter(characterConfig) {
 	console.log(`[Custom Character] Registered "${displayName}" as id ${charId} using gif: ${gifPath}`);
 }
 
+function extractTopLevelJsonObjects(raw) {
+	let objects = [];
+	let start = -1;
+	let depth = 0;
+	let inString = false;
+	let quoteChar = '';
+	let escaped = false;
+
+	for (let i = 0; i < raw.length; i++) {
+		let ch = raw[i];
+		if (inString) {
+			if (escaped) {
+				escaped = false;
+				continue;
+			}
+			if (ch == '\\') {
+				escaped = true;
+				continue;
+			}
+			if (ch == quoteChar) {
+				inString = false;
+				quoteChar = '';
+			}
+			continue;
+		}
+
+		if (ch == '"' || ch == "'") {
+			inString = true;
+			quoteChar = ch;
+			continue;
+		}
+
+		if (ch == '{') {
+			if (depth == 0) start = i;
+			depth++;
+		} else if (ch == '}') {
+			if (depth > 0) depth--;
+			if (depth == 0 && start >= 0) {
+				objects.push(raw.substring(start, i + 1));
+				start = -1;
+			}
+		}
+	}
+
+	return objects;
+}
+
+function parseCharacterData(raw) {
+	let cleaned = raw.trim().replace(/^\uFEFF/, '');
+	try {
+		let parsed = JSON.parse(cleaned);
+		if (Array.isArray(parsed)) return parsed;
+		if (Array.isArray(parsed.characters)) return parsed.characters;
+		if (parsed && typeof parsed == 'object') return [parsed];
+	} catch (error) {
+		// fallback handling below
+	}
+
+	let chunks = extractTopLevelJsonObjects(cleaned);
+	let parsedChunks = [];
+	for (let i = 0; i < chunks.length; i++) {
+		try {
+			let parsed = JSON.parse(chunks[i]);
+			if (parsed && typeof parsed == 'object') parsedChunks.push(parsed);
+		} catch (error) {
+			continue;
+		}
+	}
+	return parsedChunks;
+}
+
 function getPixelRatio(quality) {
 	// Round the device pixel ratio to the nearest integer in log base 2
 	// This is so that if you have the page zoomed or have some scale factor on Windows
@@ -2719,8 +2790,11 @@ async function loadingScreen() {
 	try {
 		let customCharacterReq = await fetch('characterdata.json');
 		if (customCharacterReq.ok) {
-			let customCharacterData = await customCharacterReq.json();
-			registerCustomCharacter(customCharacterData);
+			let customCharacterDataRaw = await customCharacterReq.text();
+			let customCharacters = parseCharacterData(customCharacterDataRaw);
+			for (let i = 0; i < customCharacters.length; i++) {
+				registerCustomCharacter(customCharacters[i]);
+			}
 		}
 	} catch (error) {
 		console.warn('[Custom Character] Failed to load characterdata.json:', error);
