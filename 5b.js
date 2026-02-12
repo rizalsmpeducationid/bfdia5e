@@ -2390,39 +2390,171 @@ function parseLooseBlockValue(valueRaw) {
 
 function parseLooseBlockData(raw) {
 	let lines = raw.replace(/\r/g, '').split('\n');
-	let groups = {};
-	let orderedKeys = [];
+	let tiles = [];
+	let currentTile = {};
+
+	function flushCurrentTile() {
+		if (Object.keys(currentTile).length > 0) {
+			tiles.push(currentTile);
+			currentTile = {};
+		}
+	}
 
 	for (let i = 0; i < lines.length; i++) {
 		let line = lines[i].trim();
-		if (line.length == 0 || line.startsWith('//') || line.startsWith('#')) continue;
-		let kv = line.match(/^([A-Za-z0-9_.-]+)\s*:\s*(.+)$/);
+		if (line.length == 0) {
+			flushCurrentTile();
+			continue;
+		}
+		if (line.startsWith('//') || line.startsWith('#')) continue;
+		if (/^tile\.$/i.test(line)) {
+			flushCurrentTile();
+			continue;
+		}
+		let kv = line.match(/^([^:：]+)\s*[:：]\s*(.+)$/);
 		if (!kv) continue;
-		let key = kv[1];
+		let key = kv[1]
+			.normalize('NFKC')
+			.replace(/[\u200B-\u200D\uFEFF]/g, '')
+			.trim();
 		let value = parseLooseBlockValue(kv[2]);
+		let normalizedKey = normalizePropertyKey(key);
 
-		let groupKey = 'tile';
 		let propKey = key;
 		let g = key.match(/^tile(?:([0-9]+))?\.(.+)$/i);
 		if (g) {
-			groupKey = g[1] ? `tile${g[1]}` : 'tile';
+			if (g[1]) {
+				let numericIndex = parseInt(g[1]);
+				while (tiles.length < numericIndex) tiles.push({});
+				if (Object.keys(currentTile).length > 0) flushCurrentTile();
+				if (!tiles[numericIndex - 1]) tiles[numericIndex - 1] = {};
+				currentTile = tiles[numericIndex - 1];
+			}
 			propKey = g[2];
 		}
 
-		if (typeof groups[groupKey] === 'undefined') {
-			groups[groupKey] = {};
-			orderedKeys.push(groupKey);
-		}
-		groups[groupKey][propKey] = value;
+		currentTile[propKey] = value;
+		currentTile[normalizedKey] = value;
 	}
 
-	let tiles = [];
-	for (let i = 0; i < orderedKeys.length; i++) {
-		let key = orderedKeys[i];
-		let tile = groups[key];
-		if (tile && Object.keys(tile).length > 0) tiles.push(tile);
-	}
+	flushCurrentTile();
+	tiles = tiles.filter(tile => tile && Object.keys(tile).length > 0);
 	return tiles;
+}
+
+function normalizePropertyKey(key) {
+	return key
+		.normalize('NFKC')
+		.replace(/[\u200B-\u200D\uFEFF]/g, '')
+		.toLowerCase()
+		.replace(/[^a-z0-9]/g, '');
+}
+
+function resolveTileImageSource(tile) {
+	let directKeys = ['image', 'image_path', 'sprite', 'src', 'path', 'texture', 'asset', 'file'];
+	for (let i = 0; i < directKeys.length; i++) {
+		let key = directKeys[i];
+		if (typeof tile[key] === 'string' && tile[key].trim().length > 0) return tile[key].trim();
+	}
+
+	let lookup = {};
+	let keys = Object.keys(tile);
+	for (let i = 0; i < keys.length; i++) {
+		let key = keys[i];
+		if (typeof tile[key] !== 'string') continue;
+		lookup[normalizePropertyKey(key)] = tile[key].trim();
+	}
+
+	let aliases = ['image', 'imagepath', 'sprite', 'spritesheet', 'src', 'filepath', 'texture', 'asset', 'tileimage'];
+	for (let i = 0; i < aliases.length; i++) {
+		let val = lookup[aliases[i]];
+		if (typeof val === 'string' && val.length > 0) return val;
+	}
+
+	let anyPath = Object.values(lookup).find(v => typeof v === 'string' && (v.includes('/') || v.includes('\\')));
+	if (typeof anyPath === 'string' && anyPath.length > 0) return anyPath;
+
+	return '';
+}
+
+function readTileValue(tile, keys, fallback = undefined) {
+	for (let i = 0; i < keys.length; i++) {
+		let key = keys[i];
+		if (typeof tile[key] !== 'undefined') return tile[key];
+		let normalized = normalizePropertyKey(key);
+		if (typeof tile[normalized] !== 'undefined') return tile[normalized];
+	}
+	return fallback;
+}
+
+function boolFromTile(tile, keys, fallback = false) {
+	let raw = readTileValue(tile, keys, fallback);
+	if (typeof raw === 'boolean') return raw;
+	if (typeof raw === 'number') return raw != 0;
+	if (typeof raw === 'string') {
+		let normalized = raw.trim().toLowerCase();
+		if (normalized == 'true' || normalized == 'yes' || normalized == 'y' || normalized == '1') return true;
+		if (normalized == 'false' || normalized == 'no' || normalized == 'n' || normalized == '0' || normalized == '-') return false;
+	}
+	return fallback;
+}
+
+function parseCollisionDirections(raw) {
+	if (Array.isArray(raw)) return raw.map(v => String(v).trim().toLowerCase());
+	if (typeof raw !== 'string') return [];
+	if (raw.trim() == '-') return [];
+	return raw.split(',').map(v => v.trim().toLowerCase()).filter(v => v.length > 0);
+}
+
+function makeTilePropertiesFromTile(tile) {
+	let props = normalizeBlockProperties(tile.properties);
+	if (!Array.isArray(tile.properties)) {
+		let canCollide = boolFromTile(tile, ['cancollide'], false);
+		let collision = parseCollisionDirections(readTileValue(tile, ['collision'], ''));
+		if (canCollide) {
+			props[0] = collision.length == 0 || collision.includes('down');
+			props[1] = collision.length == 0 || collision.includes('up');
+			props[2] = collision.length == 0 || collision.includes('right');
+			props[3] = collision.length == 0 || collision.includes('left');
+		}
+
+		let isDeadly = boolFromTile(tile, ['isdeadly'], false);
+		if (isDeadly) {
+			props[4] = true;
+			props[5] = true;
+			props[6] = true;
+			props[7] = true;
+		}
+
+		let isSwimmable = boolFromTile(tile, ['isswimmable'], false);
+		props[14] = isSwimmable;
+		props[15] = true;
+		props[16] = 1;
+		props[17] = false;
+	}
+	return props;
+}
+
+function resolveTileId(tile) {
+	let rawId = readTileValue(tile, ['id'], undefined);
+	if (Number.isInteger(rawId) && rawId >= 0) return rawId;
+	if (typeof rawId === 'string') {
+		let trimmed = rawId.trim();
+		if (!Number.isNaN(Number(trimmed)) && trimmed != '') {
+			let numeric = Math.floor(Number(trimmed));
+			if (numeric >= 0) return numeric;
+		}
+	}
+	return blockProperties.length;
+}
+
+function resolveTileSize(tile) {
+	let sizeRaw = readTileValue(tile, ['size', 'tile_size'], '1,1');
+	if (typeof sizeRaw === 'string') {
+		let parts = sizeRaw.split(',').map(v => Number(v.trim()));
+		if (parts.length >= 2 && parts[0] == 1 && parts[1] == 1) return 30;
+	}
+	return 30;
 }
 
 function parseBlockData(raw) {
@@ -2457,25 +2589,31 @@ async function registerCustomBlocks(resourceData) {
 		let tile = customBlockData[i];
 		if (!tile || typeof tile !== 'object') continue;
 
-		let tileId = Number.isInteger(tile.id) && tile.id >= 0 ? tile.id : blockProperties.length;
+		let tileId = resolveTileId(tile);
 		while (tileId > blockProperties.length) {
 			blockProperties.push(defaultBlockProperties());
 			tileNames.push('');
 		}
 
-		let tileName = typeof tile.name === 'string' && tile.name.length > 0 ? tile.name : `Custom Tile ${tileId}`;
-		let tileSize = clamp(Number(tile.tile_size) || 30, 30, 30);
-		let props = normalizeBlockProperties(tile.properties);
+		let tileName = readTileValue(tile, ['name'], `Custom Tile ${tileId}`);
+		tileName = typeof tileName === 'string' && tileName.length > 0 ? tileName : `Custom Tile ${tileId}`;
+		let tileSize = clamp(resolveTileSize(tile), 30, 30);
+		let props = makeTilePropertiesFromTile(tile);
 
-		let source = tile.image || tile.image_path || tile.sprite || '';
+		let source = resolveTileImageSource(tile);
+		if (typeof source === 'string' && source.startsWith('master/')) source = source.substring('master/'.length);
 		let sprite;
-		if (typeof source === 'string' && source.startsWith('data:image/')) {
-			sprite = await createImage(source);
-		} else if (typeof source === 'string' && source.length > 0) {
-			sprite = await loadExternalImage(source);
-		} else {
-			console.warn(`[Custom Tiles] Tile ${tileId} is missing image path/base64; skipping.`);
+		if (!(typeof source === 'string' && source.length > 0)) {
+			console.warn(`[Custom Tiles] Tile ${tileId} is missing image path/base64; skipping. Keys seen: ${Object.keys(tile).join(', ')}`);
 			continue;
+		}
+
+		try {
+			if (source.startsWith('data:image/')) sprite = await createImage(source);
+			else sprite = await loadExternalImage(source);
+		} catch (error) {
+			console.warn(`[Custom Tiles] Failed to load image for tile ${tileId} from ${source}; using fallback tile image.`, error);
+			sprite = await createImage(resourceData['blocks/b0001.svg']);
 		}
 
 		let normalized = normalizeTileCanvas(sprite, tileSize);
