@@ -2250,6 +2250,7 @@ let svgTileBorders = new Array(38);
 let svgChars = new Array(charD.length);
 let svgBodyParts = new Array(63);
 let customCharacterSpriteData = {};
+let customBlockData = [];
 let svgHPRCBubble = new Array(5);
 let svgCSBubble;
 let svgHPRCCrank;
@@ -2338,6 +2339,94 @@ function loadExternalImage(path) {
 	});
 }
 
+function defaultBlockProperties() {
+	return [false,false,false,false,false,false,false,false,false,false,false,0,0,false,false,true,1,false];
+}
+
+function normalizeBlockProperties(rawProperties) {
+	let props = defaultBlockProperties();
+	if (Array.isArray(rawProperties)) {
+		for (let i = 0; i < Math.min(rawProperties.length, props.length); i++) {
+			props[i] = rawProperties[i];
+		}
+	}
+	if (typeof props[16] !== 'number' || props[16] < 1) props[16] = 1;
+	props[16] = Math.floor(props[16]);
+	if (!Array.isArray(props[18]) && props[16] > 1) {
+		props[18] = new Array(props[16]).fill(0).map((_, i) => i);
+	}
+	return props;
+}
+
+function normalizeTileCanvas(image, tileSize = 30) {
+	let tileCanvas = document.createElement('canvas');
+	tileCanvas.width = tileSize * scaleFactor;
+	tileCanvas.height = tileSize * scaleFactor;
+	let tileCtx = tileCanvas.getContext('2d');
+	tileCtx.imageSmoothingEnabled = false;
+	tileCtx.drawImage(image, 0, 0, tileCanvas.width, tileCanvas.height);
+	return tileCanvas;
+}
+
+function parseBlockData(raw) {
+	let parsed = JSON.parse(raw);
+	if (Array.isArray(parsed)) return parsed;
+	if (Array.isArray(parsed.tiles)) return parsed.tiles;
+	return [];
+}
+
+async function loadBlockDataFile() {
+	try {
+		let req = await fetch('blockdata.bd');
+		if (!req.ok) return;
+		customBlockData = parseBlockData(await req.text());
+		console.log(`[Custom Tiles] Loaded ${customBlockData.length} tile definitions from blockdata.bd.`);
+	} catch (error) {
+		console.warn('[Custom Tiles] Failed to load blockdata.bd:', error);
+		customBlockData = [];
+	}
+}
+
+async function registerCustomBlocks(resourceData) {
+	for (let i = 0; i < customBlockData.length; i++) {
+		let tile = customBlockData[i];
+		if (!tile || typeof tile !== 'object') continue;
+
+		let tileId = Number.isInteger(tile.id) && tile.id >= 0 ? tile.id : blockProperties.length;
+		while (tileId > blockProperties.length) {
+			blockProperties.push(defaultBlockProperties());
+			tileNames.push('');
+		}
+
+		let tileName = typeof tile.name === 'string' && tile.name.length > 0 ? tile.name : `Custom Tile ${tileId}`;
+		let tileSize = clamp(Number(tile.tile_size) || 30, 30, 30);
+		let props = normalizeBlockProperties(tile.properties);
+
+		let source = tile.image || tile.image_path || tile.sprite || '';
+		let sprite;
+		if (typeof source === 'string' && source.startsWith('data:image/')) {
+			sprite = await createImage(source);
+		} else if (typeof source === 'string' && source.length > 0) {
+			sprite = await loadExternalImage(source);
+		} else {
+			console.warn(`[Custom Tiles] Tile ${tileId} is missing image path/base64; skipping.`);
+			continue;
+		}
+
+		let normalized = normalizeTileCanvas(sprite, tileSize);
+		blockProperties[tileId] = props;
+		tileNames[tileId] = tileName;
+		svgTiles[tileId] = normalized;
+		svgTilesVB[tileId] = [0, 0, tileSize, tileSize];
+
+		if (tile.image_in_images6_key && typeof resourceData[tile.image_in_images6_key] === 'undefined') {
+			resourceData[tile.image_in_images6_key] = source;
+		}
+
+		console.log(`[Custom Tiles] Registered tile ${tileId}: ${tileName}`);
+	}
+}
+
 function registerCustomCharacter(characterConfig) {
 	if (!characterConfig || typeof characterConfig !== 'object') return;
 
@@ -2422,6 +2511,17 @@ async function loadingScreen() {
 	let req = await fetch('data/levels.txt');
 	levelsString = await req.text();
 	loadLevels();
+	await loadBlockDataFile();
+
+	try {
+		let customCharacterReq = await fetch('characterdata.json');
+		if (customCharacterReq.ok) {
+			let customCharacterData = await customCharacterReq.json();
+			registerCustomCharacter(customCharacterData);
+		}
+	} catch (error) {
+		console.warn('[Custom Character] Failed to load characterdata.json:', error);
+	}
 
 	try {
 		let customCharacterReq = await fetch('characterdata.json');
@@ -2460,6 +2560,7 @@ async function loadingScreen() {
 			}
 		}
 	}
+	await registerCustomBlocks(resourceData);
 	for (let i = 0; i < svgLevers.length; i++) {
 		svgLevers[i] = await createImage(resourceData['blocks/b' + i.toString().padStart(2, '0') + 'lever.svg']);
 	}
