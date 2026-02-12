@@ -1,3 +1,4 @@
+[
 {
   "character_id": "firey",
   "display_name": "firey",
@@ -35,7 +36,7 @@
     }
   },
   "placeholder_gif_path": "data/newchar/firey.gif"
-}
+},
 {
   "character_id": "leafy",
   "display_name": "lefy",
@@ -74,3 +75,4 @@
   },
   "placeholder_gif_path": "data/newchar/leafy.gif"
 }
+]
