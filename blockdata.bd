@@ -17,3 +17,14 @@ isswimmable: false
 isdeadly: false
 size: 1, 1
 id: "♳"
+
+tile.
+name: flowers
+imagepath: master/visuals/newblock/flowers.svg
+cancollide: false
+collision : -
+isswimmable: false
+isdeadly: false
+size: 1, 1
+id: "¶"
+
