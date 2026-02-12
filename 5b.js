@@ -17,9 +17,9 @@ let canvasReal;
 let ctxReal;
 let canvas;
 let ctx;
-const cwidth = 920;
+const cwidth = 960;
 const cheight = 540;
-let pixelRatio = ;
+let pixelRatio;
 let addedZoom = 1;
 let highQual = true;
 const requestAnimationFrame = window.requestAnimationFrame || window.mozRequestAnimationFrame || window.webkitRequestAnimationFrame || window.msRequestAnimationFrame;
@@ -2512,6 +2512,16 @@ async function loadingScreen() {
 	levelsString = await req.text();
 	loadLevels();
 	await loadBlockDataFile();
+
+	try {
+		let customCharacterReq = await fetch('characterdata.json');
+		if (customCharacterReq.ok) {
+			let customCharacterData = await customCharacterReq.json();
+			registerCustomCharacter(customCharacterData);
+		}
+	} catch (error) {
+		console.warn('[Custom Character] Failed to load characterdata.json:', error);
+	}
 
 	try {
 		let customCharacterReq = await fetch('characterdata.json');
