@@ -2259,6 +2259,7 @@ let lcTriggerLinks = [];
 let firedCustomTriggers = {};
 let activeTileTweens = [];
 let pendingTriggerEvents = [];
+let lastDialogueTriggerCode = null;
 let svgHPRCBubble = new Array(5);
 let svgCSBubble;
 let svgHPRCCrank;
@@ -4391,9 +4392,19 @@ function drawCutScene() {
 	ctx.drawImage(svgCSBubble, bubLoc.x, bubLoc.y, svgCSBubble.width/scaleFactor, svgCSBubble.height/scaleFactor);
 	let textwidth = 386.55;
 	let textx = 106.7;
-	if (currdiachar == 99) {
+	let dialogueTriggerCode = getDialogueTriggerCodeFromLine(Math.min(cutSceneLine, cLevelDialogueChar.length - 1));
+	if (currdiachar == 99 || dialogueTriggerCode !== null) {
 		textwidth = 488.25;
 		textx = 4.25;
+		if (dialogueTriggerCode !== null) {
+			let triggerTile = getTriggerTileForDialogueCode(dialogueTriggerCode);
+			if (triggerTile >= 0 && svgTiles[triggerTile]) {
+				ctx.globalAlpha = 0.9;
+				ctx.fillStyle = '#ce6fce';
+				ctx.fillRect(bubLoc.x + 10, bubLoc.y + 10, 80, 80);
+				ctx.drawImage(svgTiles[triggerTile], bubLoc.x + 10, bubLoc.y + 10, 80, 80);
+			}
+		}
 	} else {
 		ctx.fillStyle = '#ce6fce';
 		ctx.fillRect(bubLoc.x + 10, bubLoc.y + 10, 80, 80);
@@ -5319,8 +5330,14 @@ function displayLine(level, line) {
 			return;
 		}
 	}
+	let dialogueTriggerCode = getDialogueTriggerCodeFromLine(line);
+	if (dialogueTriggerCode !== null) {
+		queueTriggerEvent('dialogue_' + dialogueTriggerCode, 0);
+		queueTriggerEvent(dialogueTriggerCode, 0);
+		lastDialogueTriggerCode = dialogueTriggerCode;
+	}
 	let x;
-	if (p == 99) {
+	if (p == 99 || dialogueTriggerCode !== null) {
 		x = 480;
 	} else if (p < char.length) {
 		x = Math.min(Math.max(char[p].x, bubWidth / 2 + bubMargin), 960 - bubWidth / 2 - bubMargin);
@@ -5333,11 +5350,24 @@ function displayLine(level, line) {
 	} else {
 		bubY = 520 - bubMargin - bubHeight / 2;
 	}
-	if (p < char.length) {
+	if (p < char.length && dialogueTriggerCode === null) {
 		char[p].expr = cLevelDialogueFace[line] - 2;
 		char[p].diaMouthFrame = 0;
 	}
 	csText = cLevelDialogueText[line];
+}
+
+function getDialogueTriggerCodeFromLine(line) {
+	let text = cLevelDialogueText[line] || '';
+	let m = String(text).match(/^\+([0-9]{2})\b/);
+	return m ? m[1] : null;
+}
+
+function getTriggerTileForDialogueCode(code) {
+	let keys = Object.keys(customTriggerTiles).map(Number).sort((a, b) => a - b);
+	if (keys.length == 0) return -1;
+	let idx = Math.max(0, Number(code) || 0) % keys.length;
+	return keys[idx];
 }
 
 function startDeath(i) {
@@ -6076,17 +6106,34 @@ function openTriggerPropertiesPrompt(triggerPos, targetPos) {
 	if (!linkId) return;
 	let triggerTile = myLevel[1][triggerPos.y][triggerPos.x];
 	let tDef = customTriggerTiles[triggerTile] || {};
-	let when = prompt('When to trigger (onTouchedByPlayer / PlayerOnTheSameXCoordinate / PlayerOnTheSameYCoordinate / TriggeredByOtherTrigger)', (tDef.when && tDef.when[0]) || 'onTouchedByPlayer');
+	let when = prompt('When to trigger (onTouchedByPlayer / PlayerOnTheSameXCoordinate / PlayerOnTheSameYCoordinate / TriggeredByOtherTrigger / TriggeredByDialogue)', (tDef.when && tDef.when[0]) || 'onTouchedByPlayer');
 	if (!when) return;
-	let property = prompt('Property (position, hue, brightness, opacity, rotation, frame, dialogue, state)', 'position');
+	let property = prompt('Property (position, create, destroy, wait, hue, brightness, opacity, rotation, frame, dialogue, state)', 'position');
 	if (!property) return;
-	let value = prompt('Value (for position use dx,dy like 0,-1)', '0,-1');
-	if (!value) return;
+	let value = '0,-1';
+	if (property == 'create') {
+		let tileIdRaw = prompt('Tile id to create (e.g. R or /B or numeric id)', 'R');
+		if (!tileIdRaw) return;
+		let posRaw = prompt('Where to put it? x,y', `${targetPos.x},${targetPos.y}`);
+		if (!posRaw) return;
+		value = `${tileIdRaw}@${posRaw}`;
+	} else if (property == 'destroy') {
+		let posRaw = prompt('Tile position to destroy? x,y', `${targetPos.x},${targetPos.y}`);
+		if (!posRaw) return;
+		value = posRaw;
+	} else if (property == 'wait') {
+		let triggerToRun = prompt('Trigger id to run after waiting', linkId);
+		if (!triggerToRun) return;
+		value = triggerToRun;
+	} else {
+		value = prompt('Value (for position use dx,dy like 0,-1)', '0,-1');
+		if (!value) return;
+	}
 	let tween = prompt('Tween (constant, linear, cubic-easein, cubic-easeout)', 'linear');
 	if (!tween) return;
-	let duration = Number(prompt('Tween duration in seconds (0.1-10)', '2'));
+	let duration = Number(prompt('Tween duration in seconds (0.1-10)', property == 'wait' ? '1' : '2'));
 	if (!Number.isFinite(duration)) duration = 2;
-	let sourceTriggerId = prompt('TriggeredByOtherTrigger source id (optional)', '');
+	let sourceTriggerId = prompt('TriggeredByOtherTrigger/Dialogue source id (optional)', '');
 	lcTriggerLinks.push({
 		id: linkId,
 		triggerX: triggerPos.x,
@@ -6132,6 +6179,37 @@ function applyTriggerPositionTween(link) {
 	thisLevel[fromY][fromX] = 0;
 	getTileDepths();
 	activeTileTweens.push({tile, fromX, fromY, toX, toY, startFrame: _frameCount, durationFrames: Math.max(1, Math.floor(link.duration * 60)), tween: normalizeTweenName(link.tween)});
+}
+
+
+function resolveCustomTileId(raw) {
+	let v = String(raw || '').trim();
+	if (v == '') return -1;
+	if (!Number.isNaN(Number(v))) return clamp(Math.floor(Number(v)), 0, blockProperties.length - 1);
+	if (v.length == 1) return tileIDFromChar(v.charCodeAt(0));
+	if (v.length == 2) return 111 * tileIDFromChar(v.charCodeAt(0)) + tileIDFromChar(v.charCodeAt(1));
+	return -1;
+}
+
+function applyTriggerCreate(link) {
+	let parts = String(link.value || '').split('@');
+	if (parts.length < 2) return;
+	let tileId = resolveCustomTileId(parts[0]);
+	let pos = parts[1].split(',').map(v => Math.floor(Number(v.trim())));
+	if (tileId < 0 || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return;
+	let x = clamp(pos[0], 0, levelWidth - 1);
+	let y = clamp(pos[1], 0, levelHeight - 1);
+	thisLevel[y][x] = tileId;
+	getTileDepths();
+}
+
+function applyTriggerDestroy(link) {
+	let pos = String(link.value || '').split(',').map(v => Math.floor(Number(v.trim())));
+	if (!Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return;
+	let x = clamp(pos[0], 0, levelWidth - 1);
+	let y = clamp(pos[1], 0, levelHeight - 1);
+	thisLevel[y][x] = 0;
+	getTileDepths();
 }
 
 function normalizeTweenName(tweenName) {
@@ -6201,9 +6279,15 @@ function updateCustomTriggersRuntime() {
 		else if (link.when == 'PlayerOnTheSameXCoordinate') run = playerTileX == link.triggerX;
 		else if (link.when == 'PlayerOnTheSameYCoordinate') run = playerTileY == link.triggerY;
 		else if (link.when == 'TriggeredByOtherTrigger') run = !!firedEvents[String(link.sourceTriggerId || '').trim()];
+		else if (link.when == 'TriggeredByDialogue') {
+			let src = String(link.sourceTriggerId || '').trim();
+			run = src == '' ? Object.keys(firedEvents).some(k => k.startsWith('dialogue_')) : (!!firedEvents[src] || !!firedEvents['dialogue_' + src]);
+		}
 		if (!run) continue;
 		firedCustomTriggers[trigKey] = true;
 		if (link.property == 'position') applyTriggerPositionTween(link);
+		else if (link.property == 'create') applyTriggerCreate(link);
+		else if (link.property == 'destroy') applyTriggerDestroy(link);
 		else if (link.property == 'wait') queueTriggerEvent(link.value, link.duration);
 		if (link.id) queueTriggerEvent(link.id, 0);
 	}
