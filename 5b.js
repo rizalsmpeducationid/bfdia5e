@@ -2065,7 +2065,7 @@ let charInfoHeight = 40;
 let diaInfoHeight = 20;
 const charStateNames = ['', 'Dead', 'Being Recovered', 'Deadly & Moving', 'Moving', 'Deadly', 'Carryable', '', 'Non-Playable Character', 'Rescuable', 'Playable Character'];
 const charStateNamesShort = ['', 'D', 'BR', 'D&M', 'M', 'D', 'C', '', 'NPC', 'R', 'P'];
-const toolNames = ['Draw Tool', 'Eraser Tool', 'Fill Rectangle Tool', 'Fill Tool', 'Eyedropper Tool', 'Selection Tool', 'Row Tool', 'Column Tool', 'Properties', 'Copy', 'Undo / Redo', 'Clear'];
+const toolNames = ['Draw Tool', 'Eraser Tool', 'Fill Rectangle Tool', 'Fill Tool', 'Eyedropper Tool', 'Selection Tool', 'Row Tool', 'Column Tool', 'Properties', 'Copy', '', 'Clear'];
 const tileNames = ['Air','Red Ground Block','Downward Facing Gray Spikes','Upward Facing Gray Spikes','Right Facing Gray Spikes','Left Facing Gray Spikes','End Gate','"E" Tree','Dialogue Starter','Red Background Block','Green Ground Block','Green Background Block','Win Token','Spring Block','Left Conveyer','Heater','Right Conveyer','Gray Spike Ball','Upward One-Way Platform','Downward Facing Black Spikes','Upward Facing Black Spikes','Right Facing Black Spikes','Left Facing Black Spikes','Downward Facing Black Spikes with Support Cable','Vertical Support Cable','Vertical Support Cable Connected Right','Horizontal Support Cable','Top Left Support Cable Connector','Horizontal Support Cable Connected Down','Horizontal Support Cable Connected Up','Vertical Support Cable Connected Left','Yellow Switch Block Solid','Dark Yellow Switch Block Solid','Yellow Switch Block Passable','Dark Yellow Switch Block Passable','Yellow Lever Facing Left','Yellow Lever Facing Right','Blue Lever Facing Left','Blue Lever Facing Right','Green Background Block with Upward One-Way Platform','Yellow Button','Blue Button','Gray Grass','Gray Dirt','Right Facing One-Way Platform','Two-Way Gray Spikes Top Left','Two-Way Gray Spikes Top Right','Crumbling Rock','Conglomerate-Like Background Block','Lamp','Gray Gems','Blue Switch Block Solid','Dark Blue Switch Block Solid','Blue Switch Block Passable','Dark Blue Switch Block Passable','Conglomerate-Like Background Block with Upward One-Way Platform','Gray Block','Green Lever Facing Left','Green Lever Facing Right','"V" Tree','Dark Green Switch Block Solid','Green Switch Block Passable','Dark Green Switch Block Passable','Green Switch Platform Up Solid','Green Switch Platform Up Passable','Green Switch Block Solid','Spotlight','Black Block','Left Facing One-Way Platform','Downward One-Way Platform','Green Background Block with Left Facing One-Way Platform','Green Button','Black Spike Ball','Purple Ground Block','"Wind Gust" Block','Vertical Electric Barrier','Horiontal Electric Barrier','Purple Background Block','Yellow Switch Spike Ball Passable','Yellow Switch Spike Ball Solid','"I" Tree','Yellow Switch Platform Up Solid','Yellow Switch Platform Up Passable','One-Way Conveyer Left','One-Way Conveyer Left (not moving)','One-Way Conveyer Right','One-Way Conveyer Right (not moving)','Purple Background Block Slanted Bottom Left','Purple Background Block Slanted Bottom Right','Light Gray Vertical Support Cable','Light Gray Horizontal Support Cable','Light Gray Horizontal Support Cable Connected Down','Light Gray Horizontal Support Cable Connected Up','Wood Block','Wood Background Block','Danger Zone Background Block','Purple Background Block Slanted Top Right','Purple Background Block Slanted Top Left','Gray Metal Ground Block','Wooden Background Block... again?','Acid','Acid Glow','Yellow Metal Ground Block','Lava','Lava Glow','Red Metal Ground Block','Yellow Metal Background Block','Dark Gray Metal Ground Block','Conveyer Lever Facing Left','Conveyer Lever Facing Right','Picture','','','','','','','','','','','','','','','','','','','','Water','Brick Ground Block','Wall of Text','Blue Switch Platform Up Solid','Blue Switch Platform Up Passable'];
 let charDropdown = -1;
 let charDropdownMS = -1;
@@ -6135,6 +6135,16 @@ function easeTriggerTween(t, tweenName) {
 	return t;
 }
 
+function drawTweenTile(context, x, y, tile) {
+	if (tile <= 0 || !blockProperties[tile]) return;
+	if (blockProperties[tile][16] > 1) {
+		let frame = blockProperties[tile][17] ? _frameCount % blockProperties[tile][16] : 0;
+		context.drawImage(svgTiles[tile][frame], x * 30 + svgTilesVB[tile][frame][0], y * 30 + svgTilesVB[tile][frame][1], svgTiles[tile][frame].width / scaleFactor, svgTiles[tile][frame].height / scaleFactor);
+	} else if (blockProperties[tile][16] > 0) {
+		context.drawImage(svgTiles[tile], x * 30 + svgTilesVB[tile][0], y * 30 + svgTilesVB[tile][1], svgTiles[tile].width / scaleFactor, svgTiles[tile].height / scaleFactor);
+	}
+}
+
 function updateAndDrawActiveTileTweens(context) {
 	for (let i = activeTileTweens.length - 1; i >= 0; i--) {
 		let tw = activeTileTweens[i];
@@ -6142,7 +6152,7 @@ function updateAndDrawActiveTileTweens(context) {
 		let t = easeTriggerTween(clamp(rawT, 0, 1), tw.tween);
 		let x = tw.fromX + (tw.toX - tw.fromX) * t;
 		let y = tw.fromY + (tw.toY - tw.fromY) * t;
-		drawTile(context, x, y, tw.tile);
+		drawTweenTile(context, x, y, tw.tile);
 		if (rawT >= 1) {
 			thisLevel[tw.toY][tw.toX] = tw.tile;
 			activeTileTweens.splice(i, 1);
@@ -10018,10 +10028,11 @@ function draw() {
 
 			// Draw Tools
 			for (let i = 0; i < 12; i++) {
+				if (i == 10) continue;
 				if (i == tool || (i == 9 && copied) || (i == 8 && lcPropertiesMode)) ctx.fillStyle = '#999999';
 				else ctx.fillStyle = '#666666';
 				ctx.fillRect(35 + i * 50, 490, 40, 40);
-				ctx.drawImage(svgTools[i==10&&undid?8:i], 35 + i*50, 490, svgTools[i].width/scaleFactor, svgTools[i].height/scaleFactor);
+				ctx.drawImage(svgTools[i], 35 + i*50, 490, svgTools[i].width/scaleFactor, svgTools[i].height/scaleFactor);
 				if (i == 8) {
 					ctx.fillStyle = '#ffffff';
 					ctx.font = 'bold 15px Helvetica';
@@ -10044,7 +10055,6 @@ function draw() {
 							lcPropertiesMode = !lcPropertiesMode;
 							if (!lcPropertiesMode) lcSelectedTrigger = null;
 						} else if (i == 9) copyRect();
-						else if (i == 10) undo();
 						else if (i == 11) {
 							setUndo();
 							clearMyLevel(1);
