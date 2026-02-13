@@ -29,34 +29,17 @@ size: 1, 1
 id: "¶"
 
 trigger.
-name: changeproperties
+name: Create
 colorident: FF0FF2
-func: block, entity; properties = opacity, hue, brightness, state, frame, position, rotation, dialogue,
-whentrigger: onTouchedByPlayer, or=, PlayerOnTheSameXCoordinate, or=, PlayerOnTheSameYCoordinate, or=, TriggeredByOtherTrigger,
-appliedon: tile; entity; background;
-tweenoption: constant, linear, cubic-easein, cubic-easeout
-tweendurationoption: 0.1 - 10.0;
-size: 1, 1
+options-window: window.ask("Tile id you want to create?(example: R or /B)") answer.valid("ValidTileId"): window.ask("Where Do you want to put it? (example: 12, 19)") answer.valid("ValidPosition")
+whentrigger: onTouchedByPlayer, or=, PlayerOnTheSameXCoordinate, or=, PlayerOnTheSameYCoordinate, or=, TriggeredByDialogue,
+Create: ValidTileId, on=, ValidPosition,
 id: "unique_id1"
 
 trigger.
-name: LockUnlockCamera
-colorident: 000FFF
-func: entity; properties = CameraLock, CameraUnlock
-whentrigger: onTouchedByPlayer, or=, PlayerOnTheSameXCoordinate, or=, PlayerOnTheSameYCoordinate, or=, TriggeredByOtherTrigger,
-appliedon: entity;
-tweenoption: -
-tweendurationoption: -
-size: 1, 1
-id "unique_id2"
-
-trigger.
-name: WaitAndTrigger
+name: Destroy
 colorident: FFF000
-func: trigger; properties = wait, trigger,
-whentrigger: onTouchedByPlayer, or=, PlayerOnTheSameXCoordinate, or=, PlayerOnTheSameYCoordinate, or=, TriggeredByOtherTrigger,
-appliedon: trigger;
-tweenoption: linear
-tweendurationoption: 0.1 - 10.0;
-size: 1, 1
-id "unique_id3"
+options-window: window.ask("Tile you want to Destroy?(example: 32, 22)") answer.valid("ValidDestroyPosition")
+whentrigger: onTouchedByPlayer, or=, PlayerOnTheSameXCoordinate, or=, PlayerOnTheSameYCoordinate, or=, TriggeredByDialogue,
+Destroy: Tile, on=, ValidDestroyPosition
+id: "unique_id2"
