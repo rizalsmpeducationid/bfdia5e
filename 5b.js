@@ -2258,6 +2258,7 @@ let lcSelectedTrigger = null;
 let lcTriggerLinks = [];
 let firedCustomTriggers = {};
 let activeTileTweens = [];
+let pendingTriggerEvents = [];
 let svgHPRCBubble = new Array(5);
 let svgCSBubble;
 let svgHPRCCrank;
@@ -3801,6 +3802,7 @@ function playLevel(i) {
 function resetLevel() {
 	firedCustomTriggers = {};
 	activeTileTweens = [];
+	pendingTriggerEvents = [];
 	toSeeCs = true;
 	HPRCBubbleFrame = 0;
 	tileDepths = [[], [], [], []];
@@ -5964,6 +5966,7 @@ function drawLCRect(x1, y1, x2, y2) {
 function clearMyWholeLevel() {
 	lcTriggerLinks = [];
 	lcSelectedTrigger = null;
+	pendingTriggerEvents = [];
 	myLevel = new Array(3);
 	for (let i = 0; i < 3; i++) {
 		clearMyLevel(i);
@@ -6083,6 +6086,7 @@ function openTriggerPropertiesPrompt(triggerPos, targetPos) {
 	if (!tween) return;
 	let duration = Number(prompt('Tween duration in seconds (0.1-10)', '2'));
 	if (!Number.isFinite(duration)) duration = 2;
+	let sourceTriggerId = prompt('TriggeredByOtherTrigger source id (optional)', '');
 	lcTriggerLinks.push({
 		id: linkId,
 		triggerX: triggerPos.x,
@@ -6093,7 +6097,8 @@ function openTriggerPropertiesPrompt(triggerPos, targetPos) {
 		value,
 		tween,
 		duration: clamp(duration, 0.1, 10),
-		when
+		when,
+		sourceTriggerId: (sourceTriggerId || '').trim()
 	});
 	setUndo();
 }
@@ -6121,14 +6126,22 @@ function applyTriggerPositionTween(link) {
 	let fromY = link.targetY;
 	let toX = clamp(Math.round(fromX + dx), 0, levelWidth - 1);
 	let toY = clamp(Math.round(fromY + dy), 0, levelHeight - 1);
-	if (outOfRange(fromX, fromY) || outOfRange(toX, toY)) return;
+	if (outOfRange(fromX, fromY) || outOfRange(toX, toY) || (fromX == toX && fromY == toY)) return;
 	let tile = thisLevel[fromY][fromX];
 	if (tile == 0) return;
 	thisLevel[fromY][fromX] = 0;
-	activeTileTweens.push({tile, fromX, fromY, toX, toY, startFrame: _frameCount, durationFrames: Math.max(1, Math.floor(link.duration * 60)), tween: link.tween});
+	getTileDepths();
+	activeTileTweens.push({tile, fromX, fromY, toX, toY, startFrame: _frameCount, durationFrames: Math.max(1, Math.floor(link.duration * 60)), tween: normalizeTweenName(link.tween)});
+}
+
+function normalizeTweenName(tweenName) {
+	let t = String(tweenName || 'linear').trim().toLowerCase();
+	if (t == 'cubic-easin') t = 'cubic-easein';
+	return t;
 }
 
 function easeTriggerTween(t, tweenName) {
+	tweenName = normalizeTweenName(tweenName);
 	if (tweenName == 'constant') return t >= 1 ? 1 : 0;
 	if (tweenName == 'cubic-easein') return t * t * t;
 	if (tweenName == 'cubic-easeout') return 1 - Math.pow(1 - t, 3);
@@ -6155,13 +6168,28 @@ function updateAndDrawActiveTileTweens(context) {
 		drawTweenTile(context, x, y, tw.tile);
 		if (rawT >= 1) {
 			thisLevel[tw.toY][tw.toX] = tw.tile;
+			getTileDepths();
 			activeTileTweens.splice(i, 1);
 		}
 	}
 }
 
+function queueTriggerEvent(triggerId, delaySeconds = 0) {
+	pendingTriggerEvents.push({
+		triggerId: String(triggerId || '').trim(),
+		fireFrame: _frameCount + Math.max(0, Math.floor(Number(delaySeconds || 0) * 60))
+	});
+}
+
 function updateCustomTriggersRuntime() {
 	if (!Array.isArray(lcTriggerLinks) || lcTriggerLinks.length == 0 || !char[control]) return;
+	let firedEvents = {};
+	for (let i = pendingTriggerEvents.length - 1; i >= 0; i--) {
+		if (_frameCount >= pendingTriggerEvents[i].fireFrame) {
+			firedEvents[pendingTriggerEvents[i].triggerId] = true;
+			pendingTriggerEvents.splice(i, 1);
+		}
+	}
 	let playerTileX = Math.floor(char[control].x / 30);
 	let playerTileY = Math.floor(char[control].y / 30);
 	for (let i = 0; i < lcTriggerLinks.length; i++) {
@@ -6172,14 +6200,20 @@ function updateCustomTriggersRuntime() {
 		if (link.when == 'onTouchedByPlayer') run = playerTileX == link.triggerX && playerTileY == link.triggerY;
 		else if (link.when == 'PlayerOnTheSameXCoordinate') run = playerTileX == link.triggerX;
 		else if (link.when == 'PlayerOnTheSameYCoordinate') run = playerTileY == link.triggerY;
+		else if (link.when == 'TriggeredByOtherTrigger') run = !!firedEvents[String(link.sourceTriggerId || '').trim()];
 		if (!run) continue;
 		firedCustomTriggers[trigKey] = true;
 		if (link.property == 'position') applyTriggerPositionTween(link);
+		else if (link.property == 'wait') queueTriggerEvent(link.value, link.duration);
+		if (link.id) queueTriggerEvent(link.id, 0);
 	}
 }
 
 function drawPropertiesModeOverlay() {
 	if (!lcPropertiesMode) return;
+	scale = getLCScale();
+	let tlx = 330 - (scale * levelWidth) / 2;
+	let tly = 240 - (scale * levelHeight) / 2;
 	osctx5.save();
 	for (let y = 0; y < levelHeight; y++) {
 		for (let x = 0; x < levelWidth; x++) {
@@ -6189,20 +6223,17 @@ function drawPropertiesModeOverlay() {
 			if (selected) {
 				osctx5.globalAlpha = 0.85;
 				osctx5.fillStyle = '#ffffff';
-				osctx5.fillRect(x * 30, y * 30, 30, 30);
 			} else if (!lcSelectedTrigger && isTrigger) {
 				osctx5.globalAlpha = 0.75;
 				osctx5.fillStyle = '#ff66ff';
-				osctx5.fillRect(x * 30, y * 30, 30, 30);
 			} else if (lcSelectedTrigger && !isTrigger && t != 0) {
 				osctx5.globalAlpha = 0.25;
 				osctx5.fillStyle = '#66ff99';
-				osctx5.fillRect(x * 30, y * 30, 30, 30);
 			} else {
 				osctx5.globalAlpha = 0.45;
 				osctx5.fillStyle = '#000000';
-				osctx5.fillRect(x * 30, y * 30, 30, 30);
 			}
+			osctx5.fillRect(tlx + x * scale, tly + y * scale, scale, scale);
 		}
 	}
 	osctx5.restore();
@@ -7164,6 +7195,7 @@ function readLevelString(str) {
 	setUndo();
 	lcTriggerLinks = [];
 	lcSelectedTrigger = null;
+	pendingTriggerEvents = [];
 	let lines = str.split('\r\n');
 	if (lines.length == 1) lines = str.split('\n');
 	let i = 0;
@@ -7356,6 +7388,7 @@ function readLevelString(str) {
 
 function readExploreLevelString(str) {
 	lcTriggerLinks = [];
+	pendingTriggerEvents = [];
 	myLevelChars = new Array(3);
 	myLevel = new Array(3);
 	myLevelDialogue = new Array(3);
