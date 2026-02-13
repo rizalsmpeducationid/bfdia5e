@@ -2257,9 +2257,8 @@ let lcPropertiesMode = false;
 let lcSelectedTrigger = null;
 let lcTriggerLinks = [];
 let firedCustomTriggers = {};
-let activeTileTweens = [];
 let pendingTriggerEvents = [];
-let lastDialogueTriggerCode = null;
+let lcTriggerFlashFrames = {};
 let svgHPRCBubble = new Array(5);
 let svgCSBubble;
 let svgHPRCCrank;
@@ -3802,8 +3801,8 @@ function playLevel(i) {
 
 function resetLevel() {
 	firedCustomTriggers = {};
-	activeTileTweens = [];
 	pendingTriggerEvents = [];
+	lcTriggerFlashFrames = {};
 	toSeeCs = true;
 	HPRCBubbleFrame = 0;
 	tileDepths = [[], [], [], []];
@@ -5334,7 +5333,6 @@ function displayLine(level, line) {
 	if (dialogueTriggerCode !== null) {
 		queueTriggerEvent('dialogue_' + dialogueTriggerCode, 0);
 		queueTriggerEvent(dialogueTriggerCode, 0);
-		lastDialogueTriggerCode = dialogueTriggerCode;
 	}
 	let x;
 	if (p == 99 || dialogueTriggerCode !== null) {
@@ -5997,6 +5995,7 @@ function clearMyWholeLevel() {
 	lcTriggerLinks = [];
 	lcSelectedTrigger = null;
 	pendingTriggerEvents = [];
+	lcTriggerFlashFrames = {};
 	myLevel = new Array(3);
 	for (let i = 0; i < 3; i++) {
 		clearMyLevel(i);
@@ -6102,50 +6101,31 @@ function copyRect() {
 
 
 function openTriggerPropertiesPrompt(triggerPos, targetPos) {
-	let linkId = prompt('Trigger ID', `trigger_${Date.now()}`);
-	if (!linkId) return;
 	let triggerTile = myLevel[1][triggerPos.y][triggerPos.x];
 	let tDef = customTriggerTiles[triggerTile] || {};
-	let when = prompt('When to trigger (onTouchedByPlayer / PlayerOnTheSameXCoordinate / PlayerOnTheSameYCoordinate / TriggeredByOtherTrigger / TriggeredByDialogue)', (tDef.when && tDef.when[0]) || 'onTouchedByPlayer');
-	if (!when) return;
-	let property = prompt('Property (position, create, destroy, wait, hue, brightness, opacity, rotation, frame, dialogue, state)', 'position');
-	if (!property) return;
-	let value = '0,-1';
-	if (property == 'create') {
-		let tileIdRaw = prompt('Tile id to create (e.g. R or /B or numeric id)', 'R');
+	let triggerName = String(tDef.name || '').toLowerCase();
+	let action = triggerName == 'destroy' ? 'destroy' : 'create';
+	let defaultWhen = (tDef.when && tDef.when[0]) || 'onTouchedByPlayer';
+	let value = '';
+	if (action == 'create') {
+		let tileIdRaw = prompt('Tile id you want to create? (example: R or /B)', 'R');
 		if (!tileIdRaw) return;
-		let posRaw = prompt('Where to put it? x,y', `${targetPos.x},${targetPos.y}`);
+		let posRaw = prompt('Where do you want to put it? x,y', `${targetPos.x},${targetPos.y}`);
 		if (!posRaw) return;
 		value = `${tileIdRaw}@${posRaw}`;
-	} else if (property == 'destroy') {
-		let posRaw = prompt('Tile position to destroy? x,y', `${targetPos.x},${targetPos.y}`);
+	} else {
+		let posRaw = prompt('Tile position you want to destroy? x,y', `${targetPos.x},${targetPos.y}`);
 		if (!posRaw) return;
 		value = posRaw;
-	} else if (property == 'wait') {
-		let triggerToRun = prompt('Trigger id to run after waiting', linkId);
-		if (!triggerToRun) return;
-		value = triggerToRun;
-	} else {
-		value = prompt('Value (for position use dx,dy like 0,-1)', '0,-1');
-		if (!value) return;
 	}
-	let tween = prompt('Tween (constant, linear, cubic-easein, cubic-easeout)', 'linear');
-	if (!tween) return;
-	let duration = Number(prompt('Tween duration in seconds (0.1-10)', property == 'wait' ? '1' : '2'));
-	if (!Number.isFinite(duration)) duration = 2;
-	let sourceTriggerId = prompt('TriggeredByOtherTrigger/Dialogue source id (optional)', '');
 	lcTriggerLinks.push({
-		id: linkId,
+		id: `trigger_${Date.now()}_${Math.floor(Math.random()*1000)}`,
 		triggerX: triggerPos.x,
 		triggerY: triggerPos.y,
-		targetX: targetPos.x,
-		targetY: targetPos.y,
-		property,
+		action,
 		value,
-		tween,
-		duration: clamp(duration, 0.1, 10),
-		when,
-		sourceTriggerId: (sourceTriggerId || '').trim()
+		when: defaultWhen,
+		sourceTriggerId: ''
 	});
 	setUndo();
 }
@@ -6156,6 +6136,7 @@ function updateCustomTriggerEditorClick(tx, ty) {
 	if (!lcSelectedTrigger) {
 		if (customTriggerTiles[tile]) {
 			lcSelectedTrigger = {x: tx, y: ty};
+			lcTriggerFlashFrames[`${tx},${ty}`] = 120;
 			return true;
 		}
 		return false;
@@ -6163,93 +6144,6 @@ function updateCustomTriggerEditorClick(tx, ty) {
 	openTriggerPropertiesPrompt(lcSelectedTrigger, {x: tx, y: ty});
 	lcSelectedTrigger = null;
 	return true;
-}
-
-function applyTriggerPositionTween(link) {
-	let delta = String(link.value || '0,0').split(',').map(v => Number(v.trim()));
-	let dx = Number.isFinite(delta[0]) ? delta[0] : 0;
-	let dy = Number.isFinite(delta[1]) ? delta[1] : 0;
-	let fromX = link.targetX;
-	let fromY = link.targetY;
-	let toX = clamp(Math.round(fromX + dx), 0, levelWidth - 1);
-	let toY = clamp(Math.round(fromY + dy), 0, levelHeight - 1);
-	if (outOfRange(fromX, fromY) || outOfRange(toX, toY) || (fromX == toX && fromY == toY)) return;
-	let tile = thisLevel[fromY][fromX];
-	if (tile == 0) return;
-	thisLevel[fromY][fromX] = 0;
-	getTileDepths();
-	activeTileTweens.push({tile, fromX, fromY, toX, toY, startFrame: _frameCount, durationFrames: Math.max(1, Math.floor(link.duration * 60)), tween: normalizeTweenName(link.tween)});
-}
-
-
-function resolveCustomTileId(raw) {
-	let v = String(raw || '').trim();
-	if (v == '') return -1;
-	if (!Number.isNaN(Number(v))) return clamp(Math.floor(Number(v)), 0, blockProperties.length - 1);
-	if (v.length == 1) return tileIDFromChar(v.charCodeAt(0));
-	if (v.length == 2) return 111 * tileIDFromChar(v.charCodeAt(0)) + tileIDFromChar(v.charCodeAt(1));
-	return -1;
-}
-
-function applyTriggerCreate(link) {
-	let parts = String(link.value || '').split('@');
-	if (parts.length < 2) return;
-	let tileId = resolveCustomTileId(parts[0]);
-	let pos = parts[1].split(',').map(v => Math.floor(Number(v.trim())));
-	if (tileId < 0 || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return;
-	let x = clamp(pos[0], 0, levelWidth - 1);
-	let y = clamp(pos[1], 0, levelHeight - 1);
-	thisLevel[y][x] = tileId;
-	getTileDepths();
-}
-
-function applyTriggerDestroy(link) {
-	let pos = String(link.value || '').split(',').map(v => Math.floor(Number(v.trim())));
-	if (!Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return;
-	let x = clamp(pos[0], 0, levelWidth - 1);
-	let y = clamp(pos[1], 0, levelHeight - 1);
-	thisLevel[y][x] = 0;
-	getTileDepths();
-}
-
-function normalizeTweenName(tweenName) {
-	let t = String(tweenName || 'linear').trim().toLowerCase();
-	if (t == 'cubic-easin') t = 'cubic-easein';
-	return t;
-}
-
-function easeTriggerTween(t, tweenName) {
-	tweenName = normalizeTweenName(tweenName);
-	if (tweenName == 'constant') return t >= 1 ? 1 : 0;
-	if (tweenName == 'cubic-easein') return t * t * t;
-	if (tweenName == 'cubic-easeout') return 1 - Math.pow(1 - t, 3);
-	return t;
-}
-
-function drawTweenTile(context, x, y, tile) {
-	if (tile <= 0 || !blockProperties[tile]) return;
-	if (blockProperties[tile][16] > 1) {
-		let frame = blockProperties[tile][17] ? _frameCount % blockProperties[tile][16] : 0;
-		context.drawImage(svgTiles[tile][frame], x * 30 + svgTilesVB[tile][frame][0], y * 30 + svgTilesVB[tile][frame][1], svgTiles[tile][frame].width / scaleFactor, svgTiles[tile][frame].height / scaleFactor);
-	} else if (blockProperties[tile][16] > 0) {
-		context.drawImage(svgTiles[tile], x * 30 + svgTilesVB[tile][0], y * 30 + svgTilesVB[tile][1], svgTiles[tile].width / scaleFactor, svgTiles[tile].height / scaleFactor);
-	}
-}
-
-function updateAndDrawActiveTileTweens(context) {
-	for (let i = activeTileTweens.length - 1; i >= 0; i--) {
-		let tw = activeTileTweens[i];
-		let rawT = (_frameCount - tw.startFrame) / tw.durationFrames;
-		let t = easeTriggerTween(clamp(rawT, 0, 1), tw.tween);
-		let x = tw.fromX + (tw.toX - tw.fromX) * t;
-		let y = tw.fromY + (tw.toY - tw.fromY) * t;
-		drawTweenTile(context, x, y, tw.tile);
-		if (rawT >= 1) {
-			thisLevel[tw.toY][tw.toX] = tw.tile;
-			getTileDepths();
-			activeTileTweens.splice(i, 1);
-		}
-	}
 }
 
 function queueTriggerEvent(triggerId, delaySeconds = 0) {
@@ -6278,18 +6172,14 @@ function updateCustomTriggersRuntime() {
 		if (link.when == 'onTouchedByPlayer') run = playerTileX == link.triggerX && playerTileY == link.triggerY;
 		else if (link.when == 'PlayerOnTheSameXCoordinate') run = playerTileX == link.triggerX;
 		else if (link.when == 'PlayerOnTheSameYCoordinate') run = playerTileY == link.triggerY;
-		else if (link.when == 'TriggeredByOtherTrigger') run = !!firedEvents[String(link.sourceTriggerId || '').trim()];
 		else if (link.when == 'TriggeredByDialogue') {
 			let src = String(link.sourceTriggerId || '').trim();
 			run = src == '' ? Object.keys(firedEvents).some(k => k.startsWith('dialogue_')) : (!!firedEvents[src] || !!firedEvents['dialogue_' + src]);
 		}
 		if (!run) continue;
 		firedCustomTriggers[trigKey] = true;
-		if (link.property == 'position') applyTriggerPositionTween(link);
-		else if (link.property == 'create') applyTriggerCreate(link);
-		else if (link.property == 'destroy') applyTriggerDestroy(link);
-		else if (link.property == 'wait') queueTriggerEvent(link.value, link.duration);
-		if (link.id) queueTriggerEvent(link.id, 0);
+		if (link.action == 'create') applyTriggerCreate(link);
+		else if (link.action == 'destroy') applyTriggerDestroy(link);
 	}
 }
 
@@ -6304,7 +6194,12 @@ function drawPropertiesModeOverlay() {
 			let t = myLevel[1][y][x];
 			let isTrigger = !!customTriggerTiles[t];
 			let selected = lcSelectedTrigger && lcSelectedTrigger.x == x && lcSelectedTrigger.y == y;
-			if (selected) {
+			let flashKey = `${x},${y}`;
+			if (typeof lcTriggerFlashFrames[flashKey] === 'number' && lcTriggerFlashFrames[flashKey] > 0) {
+				lcTriggerFlashFrames[flashKey]--;
+				osctx5.globalAlpha = lcTriggerFlashFrames[flashKey] % 20 < 10 ? 0.95 : 0.4;
+				osctx5.fillStyle = '#ffffff';
+			} else if (selected) {
 				osctx5.globalAlpha = 0.85;
 				osctx5.fillStyle = '#ffffff';
 			} else if (!lcSelectedTrigger && isTrigger) {
@@ -7280,6 +7175,7 @@ function readLevelString(str) {
 	lcTriggerLinks = [];
 	lcSelectedTrigger = null;
 	pendingTriggerEvents = [];
+	lcTriggerFlashFrames = {};
 	let lines = str.split('\r\n');
 	if (lines.length == 1) lines = str.split('\n');
 	let i = 0;

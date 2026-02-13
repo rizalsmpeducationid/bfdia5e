@@ -32,9 +32,9 @@ trigger.
 name: Create
 colorident: FF0FF2
 options-window: window.ask("Tile id you want to create?(example: R or /B)") answer.valid("ValidTileId"): window.ask("Where Do you want to put it? (example: 12, 19)") answer.valid("ValidPosition")
-whentrigger: onTouchedByPlayer, or=, PlayerOnTheSameXCoordinate, or=, PlayerOnTheSameYCoordinate, or= TriggeredByDialogue,
+whentrigger: onTouchedByPlayer, or=, PlayerOnTheSameXCoordinate, or=, PlayerOnTheSameYCoordinate, or=, TriggeredByDialogue,
 Create: ValidTileId, on=, ValidPosition,
-id = "unique_id1"
+id: "unique_id1"
 
 trigger.
 name: Destroy
@@ -42,4 +42,4 @@ colorident: FFF000
 options-window: window.ask("Tile you want to Destroy?(example: 32, 22)") answer.valid("ValidDestroyPosition")
 whentrigger: onTouchedByPlayer, or=, PlayerOnTheSameXCoordinate, or=, PlayerOnTheSameYCoordinate, or=, TriggeredByDialogue,
 Destroy: Tile, on=, ValidDestroyPosition
-id = "unique_id2"
+id: "unique_id2"
