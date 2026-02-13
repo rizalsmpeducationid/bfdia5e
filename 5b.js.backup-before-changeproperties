@@ -2065,7 +2065,7 @@ let charInfoHeight = 40;
 let diaInfoHeight = 20;
 const charStateNames = ['', 'Dead', 'Being Recovered', 'Deadly & Moving', 'Moving', 'Deadly', 'Carryable', '', 'Non-Playable Character', 'Rescuable', 'Playable Character'];
 const charStateNamesShort = ['', 'D', 'BR', 'D&M', 'M', 'D', 'C', '', 'NPC', 'R', 'P'];
-const toolNames = ['Draw Tool', 'Eraser Tool', 'Fill Rectangle Tool', 'Fill Tool', 'Eyedropper Tool', 'Selection Tool', 'Row Tool', 'Column Tool', '', 'Copy', 'Properties', 'Clear'];
+const toolNames = ['Draw Tool', 'Eraser Tool', 'Fill Rectangle Tool', 'Fill Tool', 'Eyedropper Tool', 'Selection Tool', 'Row Tool', 'Column Tool', '', 'Copy', 'Undo / Redo', 'Clear'];
 const tileNames = ['Air','Red Ground Block','Downward Facing Gray Spikes','Upward Facing Gray Spikes','Right Facing Gray Spikes','Left Facing Gray Spikes','End Gate','"E" Tree','Dialogue Starter','Red Background Block','Green Ground Block','Green Background Block','Win Token','Spring Block','Left Conveyer','Heater','Right Conveyer','Gray Spike Ball','Upward One-Way Platform','Downward Facing Black Spikes','Upward Facing Black Spikes','Right Facing Black Spikes','Left Facing Black Spikes','Downward Facing Black Spikes with Support Cable','Vertical Support Cable','Vertical Support Cable Connected Right','Horizontal Support Cable','Top Left Support Cable Connector','Horizontal Support Cable Connected Down','Horizontal Support Cable Connected Up','Vertical Support Cable Connected Left','Yellow Switch Block Solid','Dark Yellow Switch Block Solid','Yellow Switch Block Passable','Dark Yellow Switch Block Passable','Yellow Lever Facing Left','Yellow Lever Facing Right','Blue Lever Facing Left','Blue Lever Facing Right','Green Background Block with Upward One-Way Platform','Yellow Button','Blue Button','Gray Grass','Gray Dirt','Right Facing One-Way Platform','Two-Way Gray Spikes Top Left','Two-Way Gray Spikes Top Right','Crumbling Rock','Conglomerate-Like Background Block','Lamp','Gray Gems','Blue Switch Block Solid','Dark Blue Switch Block Solid','Blue Switch Block Passable','Dark Blue Switch Block Passable','Conglomerate-Like Background Block with Upward One-Way Platform','Gray Block','Green Lever Facing Left','Green Lever Facing Right','"V" Tree','Dark Green Switch Block Solid','Green Switch Block Passable','Dark Green Switch Block Passable','Green Switch Platform Up Solid','Green Switch Platform Up Passable','Green Switch Block Solid','Spotlight','Black Block','Left Facing One-Way Platform','Downward One-Way Platform','Green Background Block with Left Facing One-Way Platform','Green Button','Black Spike Ball','Purple Ground Block','"Wind Gust" Block','Vertical Electric Barrier','Horiontal Electric Barrier','Purple Background Block','Yellow Switch Spike Ball Passable','Yellow Switch Spike Ball Solid','"I" Tree','Yellow Switch Platform Up Solid','Yellow Switch Platform Up Passable','One-Way Conveyer Left','One-Way Conveyer Left (not moving)','One-Way Conveyer Right','One-Way Conveyer Right (not moving)','Purple Background Block Slanted Bottom Left','Purple Background Block Slanted Bottom Right','Light Gray Vertical Support Cable','Light Gray Horizontal Support Cable','Light Gray Horizontal Support Cable Connected Down','Light Gray Horizontal Support Cable Connected Up','Wood Block','Wood Background Block','Danger Zone Background Block','Purple Background Block Slanted Top Right','Purple Background Block Slanted Top Left','Gray Metal Ground Block','Wooden Background Block... again?','Acid','Acid Glow','Yellow Metal Ground Block','Lava','Lava Glow','Red Metal Ground Block','Yellow Metal Background Block','Dark Gray Metal Ground Block','Conveyer Lever Facing Left','Conveyer Lever Facing Right','Picture','','','','','','','','','','','','','','','','','','','','Water','Brick Ground Block','Wall of Text','Blue Switch Platform Up Solid','Blue Switch Platform Up Passable'];
 let charDropdown = -1;
 let charDropdownMS = -1;
@@ -2251,13 +2251,6 @@ let svgChars = new Array(charD.length);
 let svgBodyParts = new Array(63);
 let customCharacterSpriteData = {};
 let customBlockData = [];
-let customTriggerData = [];
-let customTriggerTiles = {};
-let lcPropertiesMode = false;
-let lcSelectedTrigger = null;
-let lcTriggerLinks = [];
-let firedCustomTriggers = {};
-let activeTileTweens = [];
 let svgHPRCBubble = new Array(5);
 let svgCSBubble;
 let svgHPRCCrank;
@@ -2399,11 +2392,9 @@ function parseLooseBlockData(raw) {
 	let lines = raw.replace(/\r/g, '').split('\n');
 	let tiles = [];
 	let currentTile = {};
-	let currentRecordType = 'tile';
 
 	function flushCurrentTile() {
 		if (Object.keys(currentTile).length > 0) {
-			currentTile.recordtype = currentRecordType;
 			tiles.push(currentTile);
 			currentTile = {};
 		}
@@ -2418,12 +2409,6 @@ function parseLooseBlockData(raw) {
 		if (line.startsWith('//') || line.startsWith('#')) continue;
 		if (/^tile\.$/i.test(line)) {
 			flushCurrentTile();
-			currentRecordType = 'tile';
-			continue;
-		}
-		if (/^trigger\.$/i.test(line)) {
-			flushCurrentTile();
-			currentRecordType = 'trigger';
 			continue;
 		}
 		let kv = line.match(/^([^:：]+)\s*[:：]\s*(.+)$/);
@@ -2591,40 +2576,12 @@ async function loadBlockDataFile() {
 	try {
 		let req = await fetch('blockdata.bd');
 		if (!req.ok) return;
-		let parsed = parseBlockData(await req.text());
-		customBlockData = parsed.filter(v => !v || v.recordtype !== 'trigger');
-		customTriggerData = parsed.filter(v => v && v.recordtype === 'trigger');
-		console.log(`[Custom Tiles] Loaded ${customBlockData.length} tile definitions and ${customTriggerData.length} trigger definitions from blockdata.bd.`);
+		customBlockData = parseBlockData(await req.text());
+		console.log(`[Custom Tiles] Loaded ${customBlockData.length} tile definitions from blockdata.bd.`);
 	} catch (error) {
 		console.warn('[Custom Tiles] Failed to load blockdata.bd:', error);
 		customBlockData = [];
-		customTriggerData = [];
 	}
-}
-
-function parseTriggerCsvList(value) {
-	if (typeof value !== 'string') return [];
-	return value.split(',').map(v => v.trim()).filter(v => v.length > 0 && v !== 'or=');
-}
-
-async function makeTriggerTileSprite(tileName, colorHex) {
-	let c = document.createElement('canvas');
-	c.width = 30 * scaleFactor;
-	c.height = 30 * scaleFactor;
-	let tc = c.getContext('2d');
-	let fill = '#ff00ff';
-	if (typeof colorHex === 'string' && /^([0-9a-f]{6})$/i.test(colorHex.trim())) fill = '#' + colorHex.trim();
-	tc.fillStyle = fill;
-	tc.fillRect(0, 0, c.width, c.height);
-	tc.strokeStyle = '#ffffff';
-	tc.lineWidth = 2 * scaleFactor;
-	tc.strokeRect(2 * scaleFactor, 2 * scaleFactor, c.width - 4 * scaleFactor, c.height - 4 * scaleFactor);
-	tc.fillStyle = '#111111';
-	tc.font = `${10 * scaleFactor}px Helvetica`;
-	tc.textAlign = 'center';
-	tc.textBaseline = 'middle';
-	tc.fillText((tileName || 'TR').substring(0, 2).toUpperCase(), c.width / 2, c.height / 2);
-	return c;
 }
 
 async function registerCustomBlocks(resourceData) {
@@ -2670,33 +2627,6 @@ async function registerCustomBlocks(resourceData) {
 		}
 
 		console.log(`[Custom Tiles] Registered tile ${tileId}: ${tileName}`);
-	}
-
-	for (let i = 0; i < customTriggerData.length; i++) {
-		let trigger = customTriggerData[i];
-		if (!trigger || typeof trigger !== 'object') continue;
-		let tileId = resolveTileId(trigger);
-		while (tileId > blockProperties.length) {
-			blockProperties.push(defaultBlockProperties());
-			tileNames.push('');
-		}
-		let triggerName = readTileValue(trigger, ['name'], `Trigger ${tileId}`);
-		let color = readTileValue(trigger, ['colorident'], 'ff00ff');
-		let sprite = await makeTriggerTileSprite(triggerName, color);
-		let normalized = normalizeTileCanvas(sprite, 30);
-		blockProperties[tileId] = defaultBlockProperties();
-		tileNames[tileId] = `Trigger: ${triggerName}`;
-		svgTiles[tileId] = normalized;
-		svgTilesVB[tileId] = [0, 0, 30, 30];
-		customTriggerTiles[tileId] = {
-			name: triggerName,
-			when: parseTriggerCsvList(readTileValue(trigger, ['whentrigger'], '')),
-			appliedOn: parseTriggerCsvList(readTileValue(trigger, ['appliedon'], '')),
-			tweenOptions: parseTriggerCsvList(readTileValue(trigger, ['tweenoption'], '')),
-			func: readTileValue(trigger, ['func'], ''),
-			id: readTileValue(trigger, ['id'], `trigger_${tileId}`)
-		};
-		console.log(`[Custom Triggers] Registered trigger tile ${tileId}: ${triggerName}`);
 	}
 }
 
@@ -3799,8 +3729,6 @@ function playLevel(i) {
 }
 
 function resetLevel() {
-	firedCustomTriggers = {};
-	activeTileTweens = [];
 	toSeeCs = true;
 	HPRCBubbleFrame = 0;
 	tileDepths = [[], [], [], []];
@@ -5961,8 +5889,6 @@ function drawLCRect(x1, y1, x2, y2) {
 }
 
 function clearMyWholeLevel() {
-	lcTriggerLinks = [];
-	lcSelectedTrigger = null;
 	myLevel = new Array(3);
 	for (let i = 0; i < 3; i++) {
 		clearMyLevel(i);
@@ -6064,133 +5990,6 @@ function copyRect() {
 		LCRect = [-1, -1, -1, -1];
 		copied = true;
 	}
-}
-
-
-function openTriggerPropertiesPrompt(triggerPos, targetPos) {
-	let linkId = prompt('Trigger ID', `trigger_${Date.now()}`);
-	if (!linkId) return;
-	let triggerTile = myLevel[1][triggerPos.y][triggerPos.x];
-	let tDef = customTriggerTiles[triggerTile] || {};
-	let when = prompt('When to trigger (onTouchedByPlayer / PlayerOnTheSameXCoordinate / PlayerOnTheSameYCoordinate / TriggeredByOtherTrigger)', (tDef.when && tDef.when[0]) || 'onTouchedByPlayer');
-	if (!when) return;
-	let property = prompt('Property (position, hue, brightness, opacity, rotation, frame, dialogue, state)', 'position');
-	if (!property) return;
-	let value = prompt('Value (for position use dx,dy like 0,-1)', '0,-1');
-	if (!value) return;
-	let tween = prompt('Tween (constant, linear, cubic-easein, cubic-easeout)', 'linear');
-	if (!tween) return;
-	let duration = Number(prompt('Tween duration in seconds (0.1-10)', '2'));
-	if (!Number.isFinite(duration)) duration = 2;
-	lcTriggerLinks.push({
-		id: linkId,
-		triggerX: triggerPos.x,
-		triggerY: triggerPos.y,
-		targetX: targetPos.x,
-		targetY: targetPos.y,
-		property,
-		value,
-		tween,
-		duration: clamp(duration, 0.1, 10),
-		when
-	});
-	setUndo();
-}
-
-function updateCustomTriggerEditorClick(tx, ty) {
-	if (!lcPropertiesMode || tx < 0 || ty < 0 || tx >= levelWidth || ty >= levelHeight) return false;
-	let tile = myLevel[1][ty][tx];
-	if (!lcSelectedTrigger) {
-		if (customTriggerTiles[tile]) {
-			lcSelectedTrigger = {x: tx, y: ty};
-			return true;
-		}
-		return false;
-	}
-	openTriggerPropertiesPrompt(lcSelectedTrigger, {x: tx, y: ty});
-	lcSelectedTrigger = null;
-	return true;
-}
-
-function applyTriggerPositionTween(link) {
-	let delta = String(link.value || '0,0').split(',').map(v => Number(v.trim()));
-	let dx = Number.isFinite(delta[0]) ? delta[0] : 0;
-	let dy = Number.isFinite(delta[1]) ? delta[1] : 0;
-	let fromX = link.targetX;
-	let fromY = link.targetY;
-	let toX = clamp(Math.round(fromX + dx), 0, levelWidth - 1);
-	let toY = clamp(Math.round(fromY + dy), 0, levelHeight - 1);
-	if (outOfRange(fromX, fromY) || outOfRange(toX, toY)) return;
-	let tile = thisLevel[fromY][fromX];
-	if (tile == 0) return;
-	thisLevel[fromY][fromX] = 0;
-	activeTileTweens.push({tile, fromX, fromY, toX, toY, startFrame: _frameCount, durationFrames: Math.max(1, Math.floor(link.duration * 60)), tween: link.tween});
-}
-
-function easeTriggerTween(t, tweenName) {
-	if (tweenName == 'constant') return t >= 1 ? 1 : 0;
-	if (tweenName == 'cubic-easein') return t * t * t;
-	if (tweenName == 'cubic-easeout') return 1 - Math.pow(1 - t, 3);
-	return t;
-}
-
-function updateAndDrawActiveTileTweens(context) {
-	for (let i = activeTileTweens.length - 1; i >= 0; i--) {
-		let tw = activeTileTweens[i];
-		let rawT = (_frameCount - tw.startFrame) / tw.durationFrames;
-		let t = easeTriggerTween(clamp(rawT, 0, 1), tw.tween);
-		let x = tw.fromX + (tw.toX - tw.fromX) * t;
-		let y = tw.fromY + (tw.toY - tw.fromY) * t;
-		drawTile(context, x, y, tw.tile);
-		if (rawT >= 1) {
-			thisLevel[tw.toY][tw.toX] = tw.tile;
-			activeTileTweens.splice(i, 1);
-		}
-	}
-}
-
-function updateCustomTriggersRuntime() {
-	if (!Array.isArray(lcTriggerLinks) || lcTriggerLinks.length == 0 || !char[control]) return;
-	let playerTileX = Math.floor(char[control].x / 30);
-	let playerTileY = Math.floor(char[control].y / 30);
-	for (let i = 0; i < lcTriggerLinks.length; i++) {
-		let link = lcTriggerLinks[i];
-		let trigKey = `${link.id}:${link.triggerX},${link.triggerY}`;
-		if (firedCustomTriggers[trigKey]) continue;
-		let run = false;
-		if (link.when == 'onTouchedByPlayer') run = playerTileX == link.triggerX && playerTileY == link.triggerY;
-		else if (link.when == 'PlayerOnTheSameXCoordinate') run = playerTileX == link.triggerX;
-		else if (link.when == 'PlayerOnTheSameYCoordinate') run = playerTileY == link.triggerY;
-		if (!run) continue;
-		firedCustomTriggers[trigKey] = true;
-		if (link.property == 'position') applyTriggerPositionTween(link);
-	}
-}
-
-function drawPropertiesModeOverlay() {
-	if (!lcPropertiesMode) return;
-	osctx5.save();
-	osctx5.globalAlpha = 0.45;
-	osctx5.fillStyle = '#000000';
-	osctx5.fillRect(0, 0, osc5.width / pixelRatio, osc5.height / pixelRatio);
-	for (let y = 0; y < levelHeight; y++) {
-		for (let x = 0; x < levelWidth; x++) {
-			let t = myLevel[1][y][x];
-			if (customTriggerTiles[t]) {
-				osctx5.globalAlpha = 0.85;
-				osctx5.fillStyle = lcSelectedTrigger && lcSelectedTrigger.x == x && lcSelectedTrigger.y == y ? '#ffffff' : '#ff66ff';
-				osctx5.fillRect(x * 30, y * 30, 30, 30);
-			}
-		}
-	}
-	if (lcSelectedTrigger) {
-		osctx5.globalAlpha = 0.2;
-		osctx5.fillStyle = '#66ff99';
-		for (let y = 0; y < levelHeight; y++) {
-			for (let x = 0; x < levelWidth; x++) osctx5.fillRect(x * 30, y * 30, 30, 30);
-		}
-	}
-	osctx5.restore();
 }
 
 function LCSwapLevelData(a, b) {
@@ -7147,8 +6946,6 @@ function openLevelLoader() {
 
 function readLevelString(str) {
 	setUndo();
-	lcTriggerLinks = [];
-	lcSelectedTrigger = null;
 	let lines = str.split('\r\n');
 	if (lines.length == 1) lines = str.split('\n');
 	let i = 0;
@@ -7340,7 +7137,6 @@ function readLevelString(str) {
 }
 
 function readExploreLevelString(str) {
-	lcTriggerLinks = [];
 	myLevelChars = new Array(3);
 	myLevel = new Array(3);
 	myLevelDialogue = new Array(3);
@@ -8475,9 +8271,7 @@ function draw() {
 			// 	osc4.height / pixelRatio
 			// );
 			ctx.drawImage(osc4, -Math.floor(-cameraX + shakeX) + Math.floor( (-cameraX+shakeX)/3), -Math.floor(-cameraY + shakeY) + Math.floor( Math.max( -cameraY/3 - ((bgXScale>bgYScale)?Math.max(0,(bgXScale*5.4-540)/2):0), 540 - osc4.height / pixelRatio) + shakeY/3), osc4.width / pixelRatio, osc4.height / pixelRatio);
-			updateCustomTriggersRuntime();
 			drawLevel(ctx);
-			updateAndDrawActiveTileTweens(ctx);
 
 			if (wipeTimer == 30) {
 				if (transitionType == 0) {
@@ -10029,7 +9823,7 @@ function draw() {
 									setSelectedTile(0);
 								}
 							} else if (i == 9) copyRect();
-							else if (i == 10) lcPropertiesMode = !lcPropertiesMode;
+							else if (i == 10) undo();
 							else if (i == 11) {
 								setUndo();
 								clearMyLevel(1);
@@ -10052,7 +9846,6 @@ function draw() {
 			drawLCTiles();
 			drawLCGrid();
 			drawLCChars();
-			drawPropertiesModeOverlay();
 
 			// Dialogue tab mini character popup
 			if (selectedTab == 4 && dialogueTabCharHover[0] != -1 && myLevelDialogue[1][dialogueTabCharHover[0]].char < 50) {
@@ -10089,9 +9882,7 @@ function draw() {
 			x = Math.floor((shiftedXMouse - (330 - (scale * levelWidth) / 2)) / scale);
 			y = Math.floor((shiftedYMouse - (240 - (scale * levelHeight) / 2)) / scale);
 			if (mouseIsDown && !_keysDown[32]) {
-				if (selectedTab == 2 && lcPropertiesMode && mouseOnGrid() && !pmouseIsDown) {
-					if (updateCustomTriggerEditorClick(x, y)) updateLCtiles();
-				} else if (selectedTab == 2) {
+				if (selectedTab == 2) {
 					if (tool <= 1 && mouseOnGrid()) {
 						if (tool == 1) i = 0;
 						else i = selectedTile;
