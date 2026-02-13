@@ -8506,6 +8506,7 @@ function draw() {
 			ctx.drawImage(osc4, -Math.floor(-cameraX + shakeX) + Math.floor( (-cameraX+shakeX)/3), -Math.floor(-cameraY + shakeY) + Math.floor( Math.max( -cameraY/3 - ((bgXScale>bgYScale)?Math.max(0,(bgXScale*5.4-540)/2):0), 540 - osc4.height / pixelRatio) + shakeY/3), osc4.width / pixelRatio, osc4.height / pixelRatio);
 			updateCustomTriggersRuntime();
 			drawLevel(ctx);
+			updateAndDrawActiveTileTweens(ctx);
 
 			if (wipeTimer == 30) {
 				if (transitionType == 0) {
