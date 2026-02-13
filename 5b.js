@@ -2065,7 +2065,7 @@ let charInfoHeight = 40;
 let diaInfoHeight = 20;
 const charStateNames = ['', 'Dead', 'Being Recovered', 'Deadly & Moving', 'Moving', 'Deadly', 'Carryable', '', 'Non-Playable Character', 'Rescuable', 'Playable Character'];
 const charStateNamesShort = ['', 'D', 'BR', 'D&M', 'M', 'D', 'C', '', 'NPC', 'R', 'P'];
-const toolNames = ['Draw Tool', 'Eraser Tool', 'Fill Rectangle Tool', 'Fill Tool', 'Eyedropper Tool', 'Selection Tool', 'Row Tool', 'Column Tool', '', 'Copy', 'Properties', 'Clear'];
+const toolNames = ['Draw Tool', 'Eraser Tool', 'Fill Rectangle Tool', 'Fill Tool', 'Eyedropper Tool', 'Selection Tool', 'Row Tool', 'Column Tool', 'Properties', 'Copy', 'Undo / Redo', 'Clear'];
 const tileNames = ['Air','Red Ground Block','Downward Facing Gray Spikes','Upward Facing Gray Spikes','Right Facing Gray Spikes','Left Facing Gray Spikes','End Gate','"E" Tree','Dialogue Starter','Red Background Block','Green Ground Block','Green Background Block','Win Token','Spring Block','Left Conveyer','Heater','Right Conveyer','Gray Spike Ball','Upward One-Way Platform','Downward Facing Black Spikes','Upward Facing Black Spikes','Right Facing Black Spikes','Left Facing Black Spikes','Downward Facing Black Spikes with Support Cable','Vertical Support Cable','Vertical Support Cable Connected Right','Horizontal Support Cable','Top Left Support Cable Connector','Horizontal Support Cable Connected Down','Horizontal Support Cable Connected Up','Vertical Support Cable Connected Left','Yellow Switch Block Solid','Dark Yellow Switch Block Solid','Yellow Switch Block Passable','Dark Yellow Switch Block Passable','Yellow Lever Facing Left','Yellow Lever Facing Right','Blue Lever Facing Left','Blue Lever Facing Right','Green Background Block with Upward One-Way Platform','Yellow Button','Blue Button','Gray Grass','Gray Dirt','Right Facing One-Way Platform','Two-Way Gray Spikes Top Left','Two-Way Gray Spikes Top Right','Crumbling Rock','Conglomerate-Like Background Block','Lamp','Gray Gems','Blue Switch Block Solid','Dark Blue Switch Block Solid','Blue Switch Block Passable','Dark Blue Switch Block Passable','Conglomerate-Like Background Block with Upward One-Way Platform','Gray Block','Green Lever Facing Left','Green Lever Facing Right','"V" Tree','Dark Green Switch Block Solid','Green Switch Block Passable','Dark Green Switch Block Passable','Green Switch Platform Up Solid','Green Switch Platform Up Passable','Green Switch Block Solid','Spotlight','Black Block','Left Facing One-Way Platform','Downward One-Way Platform','Green Background Block with Left Facing One-Way Platform','Green Button','Black Spike Ball','Purple Ground Block','"Wind Gust" Block','Vertical Electric Barrier','Horiontal Electric Barrier','Purple Background Block','Yellow Switch Spike Ball Passable','Yellow Switch Spike Ball Solid','"I" Tree','Yellow Switch Platform Up Solid','Yellow Switch Platform Up Passable','One-Way Conveyer Left','One-Way Conveyer Left (not moving)','One-Way Conveyer Right','One-Way Conveyer Right (not moving)','Purple Background Block Slanted Bottom Left','Purple Background Block Slanted Bottom Right','Light Gray Vertical Support Cable','Light Gray Horizontal Support Cable','Light Gray Horizontal Support Cable Connected Down','Light Gray Horizontal Support Cable Connected Up','Wood Block','Wood Background Block','Danger Zone Background Block','Purple Background Block Slanted Top Right','Purple Background Block Slanted Top Left','Gray Metal Ground Block','Wooden Background Block... again?','Acid','Acid Glow','Yellow Metal Ground Block','Lava','Lava Glow','Red Metal Ground Block','Yellow Metal Background Block','Dark Gray Metal Ground Block','Conveyer Lever Facing Left','Conveyer Lever Facing Right','Picture','','','','','','','','','','','','','','','','','','','','Water','Brick Ground Block','Wall of Text','Blue Switch Platform Up Solid','Blue Switch Platform Up Passable'];
 let charDropdown = -1;
 let charDropdownMS = -1;
@@ -4645,6 +4645,7 @@ function getTileDepths() {
 // TODO: precalculate a this stuff and only do the drawing in here. Unless it's actually all necessary. Then you can just leave it.
 function addTileMovieClip(x, y, context) {
 	let t = thisLevel[y][x];
+	if (!!customTriggerTiles[t] && menuScreen != 5) return;
 	if (blockProperties[t][16] > 0) {
 		if (blockProperties[t][16] == 1) {
 			if (blockProperties[t][11] > 0 && typeof svgLevers[(blockProperties[t][11] - 1) % 6] !== 'undefined') {
@@ -6170,24 +6171,28 @@ function updateCustomTriggersRuntime() {
 function drawPropertiesModeOverlay() {
 	if (!lcPropertiesMode) return;
 	osctx5.save();
-	osctx5.globalAlpha = 0.45;
-	osctx5.fillStyle = '#000000';
-	osctx5.fillRect(0, 0, osc5.width / pixelRatio, osc5.height / pixelRatio);
 	for (let y = 0; y < levelHeight; y++) {
 		for (let x = 0; x < levelWidth; x++) {
 			let t = myLevel[1][y][x];
-			if (customTriggerTiles[t]) {
+			let isTrigger = !!customTriggerTiles[t];
+			let selected = lcSelectedTrigger && lcSelectedTrigger.x == x && lcSelectedTrigger.y == y;
+			if (selected) {
 				osctx5.globalAlpha = 0.85;
-				osctx5.fillStyle = lcSelectedTrigger && lcSelectedTrigger.x == x && lcSelectedTrigger.y == y ? '#ffffff' : '#ff66ff';
+				osctx5.fillStyle = '#ffffff';
+				osctx5.fillRect(x * 30, y * 30, 30, 30);
+			} else if (!lcSelectedTrigger && isTrigger) {
+				osctx5.globalAlpha = 0.75;
+				osctx5.fillStyle = '#ff66ff';
+				osctx5.fillRect(x * 30, y * 30, 30, 30);
+			} else if (lcSelectedTrigger && !isTrigger && t != 0) {
+				osctx5.globalAlpha = 0.25;
+				osctx5.fillStyle = '#66ff99';
+				osctx5.fillRect(x * 30, y * 30, 30, 30);
+			} else {
+				osctx5.globalAlpha = 0.45;
+				osctx5.fillStyle = '#000000';
 				osctx5.fillRect(x * 30, y * 30, 30, 30);
 			}
-		}
-	}
-	if (lcSelectedTrigger) {
-		osctx5.globalAlpha = 0.2;
-		osctx5.fillStyle = '#66ff99';
-		for (let y = 0; y < levelHeight; y++) {
-			for (let x = 0; x < levelWidth; x++) osctx5.fillRect(x * 30, y * 30, 30, 30);
 		}
 	}
 	osctx5.restore();
@@ -7871,6 +7876,7 @@ function drawExploreThumb(context, size, data, scale) {
 }
 
 function exploreDrawThumbTile(context, x, y, tile) {
+	if (!!customTriggerTiles[tile]) return;
 	if (blockProperties[tile][16] > 0) {
 		if (blockProperties[tile][16] == 1) {
 			if (
@@ -10012,29 +10018,37 @@ function draw() {
 
 			// Draw Tools
 			for (let i = 0; i < 12; i++) {
-				if (i != 8) {
-					if (i == tool || (i == 9 && copied)) ctx.fillStyle = '#999999';
-					else ctx.fillStyle = '#666666';
-					ctx.fillRect(35 + i * 50, 490, 40, 40);
-					ctx.drawImage(svgTools[i==10&&undid?8:i], 35 + i*50, 490, svgTools[i].width/scaleFactor, svgTools[i].height/scaleFactor);
+				if (i == tool || (i == 9 && copied) || (i == 8 && lcPropertiesMode)) ctx.fillStyle = '#999999';
+				else ctx.fillStyle = '#666666';
+				ctx.fillRect(35 + i * 50, 490, 40, 40);
+				ctx.drawImage(svgTools[i==10&&undid?8:i], 35 + i*50, 490, svgTools[i].width/scaleFactor, svgTools[i].height/scaleFactor);
+				if (i == 8) {
+					ctx.fillStyle = '#ffffff';
+					ctx.font = 'bold 15px Helvetica';
+					ctx.textAlign = 'center';
+					ctx.textBaseline = 'middle';
+					ctx.fillText('P', 35 + i * 50 + 20, 510);
+				}
 
-					if (!lcPopUp && _ymouse > 480 && onRect(_xmouse, _ymouse, 35 + i * 50, 490, 40, 40)) {
-						onButton = true;
-						hoverText = toolNames[i];
-						if (mouseIsDown && !pmouseIsDown) {
-							if (i < 8) {
-								setTool(i);
-								selectedTab = 2;
-								if ((tool == 2 || tool == 3) && blockProperties[selectedTile][9]) {
-									setSelectedTile(0);
-								}
-							} else if (i == 9) copyRect();
-							else if (i == 10) lcPropertiesMode = !lcPropertiesMode;
-							else if (i == 11) {
-								setUndo();
-								clearMyLevel(1);
-								updateLCtiles();
+				if (!lcPopUp && _ymouse > 480 && onRect(_xmouse, _ymouse, 35 + i * 50, 490, 40, 40)) {
+					onButton = true;
+					hoverText = toolNames[i];
+					if (mouseIsDown && !pmouseIsDown) {
+						if (i < 8) {
+							setTool(i);
+							selectedTab = 2;
+							if ((tool == 2 || tool == 3) && blockProperties[selectedTile][9]) {
+								setSelectedTile(0);
 							}
+						} else if (i == 8) {
+							lcPropertiesMode = !lcPropertiesMode;
+							if (!lcPropertiesMode) lcSelectedTrigger = null;
+						} else if (i == 9) copyRect();
+						else if (i == 10) undo();
+						else if (i == 11) {
+							setUndo();
+							clearMyLevel(1);
+							updateLCtiles();
 						}
 					}
 				}
