@@ -2693,8 +2693,7 @@ async function registerCustomBlocks(resourceData) {
 			name: triggerName,
 			when: parseTriggerCsvList(readTileValue(trigger, ['whentrigger'], '')),
 			appliedOn: parseTriggerCsvList(readTileValue(trigger, ['appliedon'], '')),
-			tweenOptions: parseTriggerCsvList(readTileValue(trigger, ['tweenoption'], '')),
-			func: readTileValue(trigger, ['func'], ''),
+				func: readTileValue(trigger, ['func'], ''),
 			id: readTileValue(trigger, ['id'], `trigger_${tileId}`)
 		};
 		console.log(`[Custom Triggers] Registered trigger tile ${tileId}: ${triggerName}`);
@@ -6144,6 +6143,11 @@ function updateCustomTriggerEditorClick(tx, ty) {
 	openTriggerPropertiesPrompt(lcSelectedTrigger, {x: tx, y: ty});
 	lcSelectedTrigger = null;
 	return true;
+}
+
+
+function updateAndDrawActiveTileTweens(context) {
+	// deprecated tween pipeline (intentionally no-op).
 }
 
 function queueTriggerEvent(triggerId, delaySeconds = 0) {
