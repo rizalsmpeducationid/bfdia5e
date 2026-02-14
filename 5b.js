@@ -2075,6 +2075,7 @@ let diaDropdownType;
 let lcPopUp = false;
 let lcPopUpNextFrame = false;
 let lcPopUpType = 0;
+let lcPropertiesMode = false;
 let tabHeight = 30;
 let tileTabScrollBar = 0;
 let charsTabScrollBar = 0;
