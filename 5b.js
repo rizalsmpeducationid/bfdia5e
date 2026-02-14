@@ -2198,6 +2198,10 @@ let levelTimer2 = 0;
 let bgXScale = 0;
 let bgYScale = 0;
 let customTriggerTiles = [];
+const force2DMode =
+	window.location.pathname.replace(/\/+$/, '').endsWith('/force2d') ||
+	window.location.search.includes('force2d');
+let renderMode3D = !force2DMode;
 let stopX = 0;
 let stopY = 0;
 let toBounce = false;
@@ -4689,6 +4693,34 @@ function getTileDepths() {
 		}
 	}
 }
+
+function drawExtrudedTile(x, y, tileId, context) {
+	if (tileId <= 0) return;
+	let px = x * 30;
+	let py = y * 30;
+	let depthX = 6;
+	let depthY = 6;
+
+	// Right side face
+	context.fillStyle = 'rgba(0,0,0,0.24)';
+	context.beginPath();
+	context.moveTo(px + 30, py);
+	context.lineTo(px + 30 + depthX, py - depthY);
+	context.lineTo(px + 30 + depthX, py + 30 - depthY);
+	context.lineTo(px + 30, py + 30);
+	context.closePath();
+	context.fill();
+
+	// Top face
+	context.fillStyle = 'rgba(255,255,255,0.17)';
+	context.beginPath();
+	context.moveTo(px, py);
+	context.lineTo(px + depthX, py - depthY);
+	context.lineTo(px + 30 + depthX, py - depthY);
+	context.lineTo(px + 30, py);
+	context.closePath();
+	context.fill();
+}
 // draws a tile
 // TODO: precalculate a this stuff and only do the drawing in here. Unless it's actually all necessary. Then you can just leave it.
 function addTileMovieClip(x, y, context) {
@@ -4696,6 +4728,7 @@ function addTileMovieClip(x, y, context) {
 	if (!!customTriggerTiles[t] && menuScreen != 5) return;
 	if (blockProperties[t][16] > 0) {
 		if (blockProperties[t][16] == 1) {
+			if (renderMode3D) drawExtrudedTile(x, y, t, context);
 			if (blockProperties[t][11] > 0 && typeof svgLevers[(blockProperties[t][11] - 1) % 6] !== 'undefined') {
 				context.save();
 				context.translate(x * 30 + 15, y * 30 + 28);
@@ -4724,6 +4757,7 @@ function addTileMovieClip(x, y, context) {
 			}
 			// context.fillStyle = '#00ffcc';
 			// context.fillRect(x*30, y*30, 30, 30);
+			if (renderMode3D) drawExtrudedTile(x, y, t, context);
 			if (boundingBoxCheck(cameraX, cameraY, 960, 540, x * 30 + svgTilesVB[t][frame][0], y * 30 + svgTilesVB[t][frame][1], svgTilesVB[t][frame][2], svgTilesVB[t][frame][3])) {
 				context.drawImage(svgTiles[t][frame], x * 30 + svgTilesVB[t][frame][0], y * 30 + svgTilesVB[t][frame][1], svgTiles[t][frame].width / scaleFactor, svgTiles[t][frame].height / scaleFactor);
 			}
