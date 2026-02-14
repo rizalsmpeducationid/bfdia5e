@@ -2251,14 +2251,7 @@ let svgChars = new Array(charD.length);
 let svgBodyParts = new Array(63);
 let customCharacterSpriteData = {};
 let customBlockData = [];
-let customTriggerData = [];
-let customTriggerTiles = {};
-let lcPropertiesMode = false;
-let lcSelectedTrigger = null;
-let lcTriggerLinks = [];
-let firedCustomTriggers = {};
-let pendingTriggerEvents = [];
-let lcTriggerFlashFrames = {};
+let customTilePhysics = {};
 let svgHPRCBubble = new Array(5);
 let svgCSBubble;
 let svgHPRCCrank;
@@ -2400,11 +2393,9 @@ function parseLooseBlockData(raw) {
 	let lines = raw.replace(/\r/g, '').split('\n');
 	let tiles = [];
 	let currentTile = {};
-	let currentRecordType = 'tile';
 
 	function flushCurrentTile() {
 		if (Object.keys(currentTile).length > 0) {
-			currentTile.recordtype = currentRecordType;
 			tiles.push(currentTile);
 			currentTile = {};
 		}
@@ -2419,12 +2410,6 @@ function parseLooseBlockData(raw) {
 		if (line.startsWith('//') || line.startsWith('#')) continue;
 		if (/^tile\.$/i.test(line)) {
 			flushCurrentTile();
-			currentRecordType = 'tile';
-			continue;
-		}
-		if (/^trigger\.$/i.test(line)) {
-			flushCurrentTile();
-			currentRecordType = 'trigger';
 			continue;
 		}
 		let kv = line.match(/^([^:：]+)\s*[:：]\s*(.+)$/);
@@ -2551,6 +2536,83 @@ function makeTilePropertiesFromTile(tile) {
 	return props;
 }
 
+function parsePhysicsType(tile) {
+	let physicsType = readTileValue(tile, ['physicstype'], '');
+	if (typeof physicsType !== 'string') return '';
+	return physicsType.trim().toLowerCase();
+}
+
+function hasCustomFluidPhysics(tileId) {
+	return (
+		typeof customTilePhysics[tileId] !== 'undefined' &&
+		customTilePhysics[tileId].applyPhysics &&
+		customTilePhysics[tileId].physicsType == 'flow'
+	);
+}
+
+function canFluidMoveInto(x, y, fromTileId) {
+	if (outOfRange(x, y)) return false;
+	let target = thisLevel[y][x];
+	if (target == fromTileId) return false;
+	if (target != 0) {
+		if (blockProperties[target][0] || blockProperties[target][1] || blockProperties[target][2] || blockProperties[target][3]) return false;
+		if (hasCustomFluidPhysics(target)) return false;
+		return false;
+	}
+	return true;
+}
+
+function fluidUpdateSwap(x1, y1, x2, y2) {
+	let t1 = thisLevel[y1][x1];
+	let t2 = thisLevel[y2][x2];
+	thisLevel[y1][x1] = t2;
+	thisLevel[y2][x2] = t1;
+
+	let tf = tileFrames[y1][x1];
+	tileFrames[y1][x1] = tileFrames[y2][x2];
+	tileFrames[y2][x2] = tf;
+}
+
+function updateCustomFluidTiles() {
+	if (!customTilePhysics || Object.keys(customTilePhysics).length == 0) return;
+	let changed = false;
+	for (let y = levelHeight - 2; y >= 0; y--) {
+		for (let x = 0; x < levelWidth; x++) {
+			let tileId = thisLevel[y][x];
+			if (!hasCustomFluidPhysics(tileId)) continue;
+
+			let physics = customTilePhysics[tileId];
+			if (physics.applyGravity && canFluidMoveInto(x, y + 1, tileId)) {
+				fluidUpdateSwap(x, y, x, y + 1);
+				changed = true;
+				continue;
+			}
+
+			let dirs = Math.random() < 0.5 ? [-1, 1] : [1, -1];
+			for (let i = 0; i < dirs.length; i++) {
+				let nx = x + dirs[i];
+				if (canFluidMoveInto(nx, y, tileId)) {
+					fluidUpdateSwap(x, y, nx, y);
+					changed = true;
+					break;
+				}
+				if (canFluidMoveInto(nx, y + 1, tileId)) {
+					fluidUpdateSwap(x, y, nx, y + 1);
+					changed = true;
+					break;
+				}
+			}
+		}
+	}
+
+	if (changed) {
+		tileDepths = [[], [], [], []];
+		getTileDepths();
+		calculateShadowsAndBorders();
+		drawStaticTiles();
+	}
+}
+
 function resolveTileId(tile) {
 	let rawId = readTileValue(tile, ['id'], undefined);
 	if (Number.isInteger(rawId) && rawId >= 0) return rawId;
@@ -2592,40 +2654,12 @@ async function loadBlockDataFile() {
 	try {
 		let req = await fetch('blockdata.bd');
 		if (!req.ok) return;
-		let parsed = parseBlockData(await req.text());
-		customBlockData = parsed.filter(v => !v || v.recordtype !== 'trigger');
-		customTriggerData = parsed.filter(v => v && v.recordtype === 'trigger');
-		console.log(`[Custom Tiles] Loaded ${customBlockData.length} tile definitions and ${customTriggerData.length} trigger definitions from blockdata.bd.`);
+		customBlockData = parseBlockData(await req.text());
+		console.log(`[Custom Tiles] Loaded ${customBlockData.length} tile definitions from blockdata.bd.`);
 	} catch (error) {
 		console.warn('[Custom Tiles] Failed to load blockdata.bd:', error);
 		customBlockData = [];
-		customTriggerData = [];
 	}
-}
-
-function parseTriggerCsvList(value) {
-	if (typeof value !== 'string') return [];
-	return value.split(',').map(v => v.trim()).filter(v => v.length > 0 && v !== 'or=');
-}
-
-async function makeTriggerTileSprite(tileName, colorHex) {
-	let c = document.createElement('canvas');
-	c.width = 30 * scaleFactor;
-	c.height = 30 * scaleFactor;
-	let tc = c.getContext('2d');
-	let fill = '#ff00ff';
-	if (typeof colorHex === 'string' && /^([0-9a-f]{6})$/i.test(colorHex.trim())) fill = '#' + colorHex.trim();
-	tc.fillStyle = fill;
-	tc.fillRect(0, 0, c.width, c.height);
-	tc.strokeStyle = '#ffffff';
-	tc.lineWidth = 2 * scaleFactor;
-	tc.strokeRect(2 * scaleFactor, 2 * scaleFactor, c.width - 4 * scaleFactor, c.height - 4 * scaleFactor);
-	tc.fillStyle = '#111111';
-	tc.font = `${10 * scaleFactor}px Helvetica`;
-	tc.textAlign = 'center';
-	tc.textBaseline = 'middle';
-	tc.fillText((tileName || 'TR').substring(0, 2).toUpperCase(), c.width / 2, c.height / 2);
-	return c;
 }
 
 async function registerCustomBlocks(resourceData) {
@@ -2643,6 +2677,11 @@ async function registerCustomBlocks(resourceData) {
 		tileName = typeof tileName === 'string' && tileName.length > 0 ? tileName : `Custom Tile ${tileId}`;
 		let tileSize = clamp(resolveTileSize(tile), 30, 30);
 		let props = makeTilePropertiesFromTile(tile);
+		customTilePhysics[tileId] = {
+			applyPhysics: boolFromTile(tile, ['applyphysics'], false),
+			physicsType: parsePhysicsType(tile),
+			applyGravity: boolFromTile(tile, ['applygravity'], false),
+		};
 
 		let source = resolveTileImageSource(tile);
 		if (typeof source === 'string' && source.startsWith('master/')) source = source.substring('master/'.length);
@@ -2671,32 +2710,6 @@ async function registerCustomBlocks(resourceData) {
 		}
 
 		console.log(`[Custom Tiles] Registered tile ${tileId}: ${tileName}`);
-	}
-
-	for (let i = 0; i < customTriggerData.length; i++) {
-		let trigger = customTriggerData[i];
-		if (!trigger || typeof trigger !== 'object') continue;
-		let tileId = resolveTileId(trigger);
-		while (tileId > blockProperties.length) {
-			blockProperties.push(defaultBlockProperties());
-			tileNames.push('');
-		}
-		let triggerName = readTileValue(trigger, ['name'], `Trigger ${tileId}`);
-		let color = readTileValue(trigger, ['colorident'], 'ff00ff');
-		let sprite = await makeTriggerTileSprite(triggerName, color);
-		let normalized = normalizeTileCanvas(sprite, 30);
-		blockProperties[tileId] = defaultBlockProperties();
-		tileNames[tileId] = `Trigger: ${triggerName}`;
-		svgTiles[tileId] = normalized;
-		svgTilesVB[tileId] = [0, 0, 30, 30];
-		customTriggerTiles[tileId] = {
-			name: triggerName,
-			when: parseTriggerCsvList(readTileValue(trigger, ['whentrigger'], '')),
-			appliedOn: parseTriggerCsvList(readTileValue(trigger, ['appliedon'], '')),
-				func: readTileValue(trigger, ['func'], ''),
-			id: readTileValue(trigger, ['id'], `trigger_${tileId}`)
-		};
-		console.log(`[Custom Triggers] Registered trigger tile ${tileId}: ${triggerName}`);
 	}
 }
 
@@ -8499,6 +8512,7 @@ function draw() {
 			break;
 
 		case 3:
+			if (levelTimer % 2 == 0) updateCustomFluidTiles();
 			// TODO: Look into if it would be more accurate to the Flash version if this were moved to after the game logic.
 			// ctx.drawImage(
 			// 	osc4,
