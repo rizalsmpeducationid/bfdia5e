@@ -30,7 +30,7 @@ id: "¶"
 
 tile.
 name: water
-imagepath: master/visuals/newblock/water.svg
+imagepath: master/visuals/blocks/b0130.svg
 cancollide: false
 collision : -
 isswimmable: true
