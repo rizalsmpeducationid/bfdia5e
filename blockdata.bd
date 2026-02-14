@@ -1,0 +1,58 @@
+tile.
+name: sandheart
+imagepath: master/visuals/newblock/sandheart.svg
+cancollide: true
+collision : up, down, left, right
+isswimmable: false
+isdeadly: false
+size: 1, 1
+id: "Ͳ"
+
+tile.
+name: grasstile
+imagepath: master/visuals/newblock/grasstile.svg
+cancollide: false
+collision : -
+isswimmable: false
+isdeadly: false
+size: 1, 1
+id: "♳"
+
+tile.
+name: flowers
+imagepath: master/visuals/newblock/flowers.svg
+cancollide: false
+collision : -
+isswimmable: false
+isdeadly: false
+size: 1, 1
+id: "¶"
+
+tile.
+name: water
+imagepath: master/visuals/newblock/water.svg
+cancollide: false
+collision : -
+isswimmable: true
+isdeadly: false
+size: 1, 1
+applyphysics: true
+physicstype: flow
+applygravity: true
+id: "¶"
+
+trigger.
+name: Create
+colorident: FF0FF2
+options-window: window.ask("Tile id you want to create?(example: R or /B)") answer.valid("ValidTileId"): window.ask("Where Do you want to put it? (example: 12, 19)") answer.valid("ValidPosition")
+whentrigger: onTouchedByPlayer, or=, PlayerOnTheSameXCoordinate, or=, PlayerOnTheSameYCoordinate, or=, TriggeredByDialogue,
+Create: ValidTileId, on=, ValidPosition,
+id: "unique_id1"
+
+trigger.
+name: Destroy
+colorident: FFF000
+options-window: window.ask("Tile you want to Destroy?(example: 32, 22)") answer.valid("ValidDestroyPosition")
+whentrigger: onTouchedByPlayer, or=, PlayerOnTheSameXCoordinate, or=, PlayerOnTheSameYCoordinate, or=, TriggeredByDialogue,
+Destroy: Tile, on=, ValidDestroyPosition
+id: "unique_id2"
