@@ -28,6 +28,19 @@ isdeadly: false
 size: 1, 1
 id: "¶"
 
+tile.
+name: water
+imagepath: master/visuals/blocks/b0130.svg
+cancollide: false
+collision : -
+isswimmable: true
+isdeadly: false
+size: 1, 1
+applyphysics: true
+physicstype: flow
+applygravity: true
+id: "¶"
+
 trigger.
 name: Create
 colorident: FF0FF2
@@ -43,3 +56,18 @@ options-window: window.ask("Tile you want to Destroy?(example: 32, 22)") answer.
 whentrigger: onTouchedByPlayer, or=, PlayerOnTheSameXCoordinate, or=, PlayerOnTheSameYCoordinate, or=, TriggeredByDialogue,
 Destroy: Tile, on=, ValidDestroyPosition
 id: "unique_id2"
+
+tile.
+name: media-trigger
+id: 140
+imagepath: visuals/blocks/b0001.svg
+size: 1, 1
+cancollide: false
+collision: -
+isswimmable: false
+isdeadly: false
+ismediatrigger: true
+
+# Optional: normal trigger wiring too
+applytrigger: true
+triggergroup: 1

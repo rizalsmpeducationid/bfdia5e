@@ -2075,6 +2075,7 @@ let diaDropdownType;
 let lcPopUp = false;
 let lcPopUpNextFrame = false;
 let lcPopUpType = 0;
+let lcPropertiesMode = false;
 let tabHeight = 30;
 let tileTabScrollBar = 0;
 let charsTabScrollBar = 0;
@@ -2195,7 +2196,18 @@ let LCRect = [-1, -1, -1, -1];
 let levelTimer = 0;
 let levelTimer2 = 0;
 let bgXScale = 0;
-let bgYscale = 0;
+let bgYScale = 0;
+// Legacy compatibility guards: some user-modified/local cached scripts may still reference these old 3D toggle symbols.
+let force2DMode = true;
+let renderMode3D = false;
+function drawExtrudedTile() {}
+var customTriggerTiles = [];
+var lcTriggerLinks = [];
+window.customTriggerTiles = customTriggerTiles;
+window.lcTriggerLinks = lcTriggerLinks;
+let mediaTriggerTiles = {};
+let mediaTriggerLinks = lcTriggerLinks;
+let activeMediaOverlay = null;
 let stopX = 0;
 let stopY = 0;
 let toBounce = false;
@@ -2551,6 +2563,83 @@ function makeTilePropertiesFromTile(tile) {
 	return props;
 }
 
+function parsePhysicsType(tile) {
+	let physicsType = readTileValue(tile, ['physicstype'], '');
+	if (typeof physicsType !== 'string') return '';
+	return physicsType.trim().toLowerCase();
+}
+
+function hasCustomFluidPhysics(tileId) {
+	return (
+		typeof customTilePhysics[tileId] !== 'undefined' &&
+		customTilePhysics[tileId].applyPhysics &&
+		customTilePhysics[tileId].physicsType == 'flow'
+	);
+}
+
+function canFluidMoveInto(x, y, fromTileId) {
+	if (outOfRange(x, y)) return false;
+	let target = thisLevel[y][x];
+	if (target == fromTileId) return false;
+	if (target != 0) {
+		if (blockProperties[target][0] || blockProperties[target][1] || blockProperties[target][2] || blockProperties[target][3]) return false;
+		if (hasCustomFluidPhysics(target)) return false;
+		return false;
+	}
+	return true;
+}
+
+function fluidUpdateSwap(x1, y1, x2, y2) {
+	let t1 = thisLevel[y1][x1];
+	let t2 = thisLevel[y2][x2];
+	thisLevel[y1][x1] = t2;
+	thisLevel[y2][x2] = t1;
+
+	let tf = tileFrames[y1][x1];
+	tileFrames[y1][x1] = tileFrames[y2][x2];
+	tileFrames[y2][x2] = tf;
+}
+
+function updateCustomFluidTiles() {
+	if (!customTilePhysics || Object.keys(customTilePhysics).length == 0) return;
+	let changed = false;
+	for (let y = levelHeight - 2; y >= 0; y--) {
+		for (let x = 0; x < levelWidth; x++) {
+			let tileId = thisLevel[y][x];
+			if (!hasCustomFluidPhysics(tileId)) continue;
+
+			let physics = customTilePhysics[tileId];
+			if (physics.applyGravity && canFluidMoveInto(x, y + 1, tileId)) {
+				fluidUpdateSwap(x, y, x, y + 1);
+				changed = true;
+				continue;
+			}
+
+			let dirs = Math.random() < 0.5 ? [-1, 1] : [1, -1];
+			for (let i = 0; i < dirs.length; i++) {
+				let nx = x + dirs[i];
+				if (canFluidMoveInto(nx, y, tileId)) {
+					fluidUpdateSwap(x, y, nx, y);
+					changed = true;
+					break;
+				}
+				if (canFluidMoveInto(nx, y + 1, tileId)) {
+					fluidUpdateSwap(x, y, nx, y + 1);
+					changed = true;
+					break;
+				}
+			}
+		}
+	}
+
+	if (changed) {
+		tileDepths = [[], [], [], []];
+		getTileDepths();
+		calculateShadowsAndBorders();
+		drawStaticTiles();
+	}
+}
+
 function resolveTileId(tile) {
 	let rawId = readTileValue(tile, ['id'], undefined);
 	if (Number.isInteger(rawId) && rawId >= 0) return rawId;
@@ -2571,6 +2660,22 @@ function resolveTileSize(tile) {
 		if (parts.length >= 2 && parts[0] == 1 && parts[1] == 1) return 30;
 	}
 	return 30;
+}
+
+function parseTriggerType(tile) {
+	let triggerType = readTileValue(tile, ['triggertype'], 'touch');
+	if (typeof triggerType !== 'string') return 'touch';
+	return triggerType.trim().toLowerCase();
+}
+
+function resolveTriggerGroup(tile) {
+	let raw = readTileValue(tile, ['triggergroup', 'switchgroup', 'switchesfor'], 1);
+	let group = Number(raw);
+	if (!Number.isFinite(group)) group = 1;
+	group = Math.floor(group);
+	if (group < 1) group = 1;
+	if (group > switchable.length) group = switchable.length;
+	return group;
 }
 
 function parseBlockData(raw) {
@@ -2643,6 +2748,21 @@ async function registerCustomBlocks(resourceData) {
 		tileName = typeof tileName === 'string' && tileName.length > 0 ? tileName : `Custom Tile ${tileId}`;
 		let tileSize = clamp(resolveTileSize(tile), 30, 30);
 		let props = makeTilePropertiesFromTile(tile);
+		customTilePhysics[tileId] = {
+			applyPhysics: boolFromTile(tile, ['applyphysics'], false),
+			physicsType: parsePhysicsType(tile),
+			applyGravity: boolFromTile(tile, ['applygravity'], false),
+		};
+		if (boolFromTile(tile, ['applytrigger'], false)) {
+			customTriggerTiles[tileId] = {
+				triggerType: parseTriggerType(tile),
+				triggerGroup: resolveTriggerGroup(tile)
+			};
+		}
+		if (boolFromTile(tile, ['ismediatrigger', 'mediatrigger'], false)) {
+			mediaTriggerTiles[tileId] = true;
+			tileName = '[M]';
+		}
 
 		let source = resolveTileImageSource(tile);
 		if (typeof source === 'string' && source.startsWith('master/')) source = source.substring('master/'.length);
@@ -2661,6 +2781,22 @@ async function registerCustomBlocks(resourceData) {
 		}
 
 		let normalized = normalizeTileCanvas(sprite, tileSize);
+		if (mediaTriggerTiles[tileId]) {
+			normalized = document.createElement('canvas');
+			normalized.width = tileSize * scaleFactor;
+			normalized.height = tileSize * scaleFactor;
+			let mctx = normalized.getContext('2d');
+			mctx.fillStyle = '#1d1d1d';
+			mctx.fillRect(0, 0, normalized.width, normalized.height);
+			mctx.strokeStyle = '#8a8a8a';
+			mctx.lineWidth = 2;
+			mctx.strokeRect(1, 1, normalized.width - 2, normalized.height - 2);
+			mctx.fillStyle = '#ffffff';
+			mctx.font = `${14 * scaleFactor}px Helvetica`;
+			mctx.textAlign = 'center';
+			mctx.textBaseline = 'middle';
+			mctx.fillText('[M]', normalized.width / 2, normalized.height / 2 + 1);
+		}
 		blockProperties[tileId] = props;
 		tileNames[tileId] = tileName;
 		svgTiles[tileId] = normalized;
@@ -3996,6 +4132,7 @@ function resetLevel() {
 	osc2.height = Math.floor(levelHeight * 30 * pixelRatio);
 	osctx2.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
 	drawStaticTiles();
+	prepareMediaTriggerLinksForCurrentLevel();
 	recover = false;
 	cornerHangTimer = 0;
 	charsAtEnd = 0;
@@ -4652,6 +4789,7 @@ function getTileDepths() {
 		}
 	}
 }
+
 // draws a tile
 // TODO: precalculate a this stuff and only do the drawing in here. Unless it's actually all necessary. Then you can just leave it.
 function addTileMovieClip(x, y, context) {
@@ -4659,6 +4797,7 @@ function addTileMovieClip(x, y, context) {
 	if (!!customTriggerTiles[t] && menuScreen != 5) return;
 	if (blockProperties[t][16] > 0) {
 		if (blockProperties[t][16] == 1) {
+			if (renderMode3D) drawExtrudedTile(x, y, t, context);
 			if (blockProperties[t][11] > 0 && typeof svgLevers[(blockProperties[t][11] - 1) % 6] !== 'undefined') {
 				context.save();
 				context.translate(x * 30 + 15, y * 30 + 28);
@@ -4687,6 +4826,7 @@ function addTileMovieClip(x, y, context) {
 			}
 			// context.fillStyle = '#00ffcc';
 			// context.fillRect(x*30, y*30, 30, 30);
+			if (renderMode3D) drawExtrudedTile(x, y, t, context);
 			if (boundingBoxCheck(cameraX, cameraY, 960, 540, x * 30 + svgTilesVB[t][frame][0], y * 30 + svgTilesVB[t][frame][1], svgTilesVB[t][frame][2], svgTilesVB[t][frame][3])) {
 				context.drawImage(svgTiles[t][frame], x * 30 + svgTilesVB[t][frame][0], y * 30 + svgTilesVB[t][frame][1], svgTiles[t][frame].width / scaleFactor, svgTiles[t][frame].height / scaleFactor);
 			}
@@ -4891,6 +5031,144 @@ function checkButton(i) {
 			}
 		}
 	}
+	checkCustomTriggers(i);
+	checkMediaTriggers(i);
+}
+
+function checkCustomTriggers(i) {
+	if (!char[i] || char[i].charState < 7) return;
+	if (!Array.isArray(char[i].customTriggersPressed)) char[i].customTriggersPressed = [];
+
+	let currentlyTouching = [];
+	for (let y = Math.floor((char[i].y - char[i].h) / 30); y <= Math.floor((char[i].y - 0.01) / 30); y++) {
+		for (let x = Math.floor((char[i].x - char[i].w) / 30); x <= Math.floor((char[i].x + char[i].w) / 30); x++) {
+			if (outOfRange(x, y)) continue;
+			let tileId = thisLevel[y][x];
+			if (!customTriggerTiles[tileId]) continue;
+			currentlyTouching.push(`${x},${y}`);
+
+			let wasPressed = false;
+			for (let j = 0; j < char[i].customTriggersPressed.length; j++) {
+				if (char[i].customTriggersPressed[j] == `${x},${y}`) {
+					wasPressed = true;
+					break;
+				}
+			}
+
+			if (!wasPressed) {
+				let group = customTriggerTiles[tileId].triggerGroup;
+				if (group >= 1) leverSwitch(group - 1);
+				char[i].customTriggersPressed.push(`${x},${y}`);
+			}
+		}
+	}
+
+	char[i].customTriggersPressed = char[i].customTriggersPressed.filter(key => currentlyTouching.includes(key));
+}
+
+function mediaLinkKey(x, y) {
+	return `${currentLevel}:${x},${y}`;
+}
+
+function isMediaVideoLink(url) {
+	if (typeof url !== 'string') return false;
+	let lower = url.toLowerCase();
+	return lower.includes('youtube.com') || lower.includes('youtu.be') || /\.(mp4|webm|ogg|mov|m4v)(\?|$)/.test(lower);
+}
+
+function playMediaTrigger(url) {
+	if (typeof url !== 'string' || url.trim().length == 0) return;
+	url = url.trim();
+
+	if (!isMediaVideoLink(url)) {
+		musicSound.pause();
+		musicSound.src = url;
+		musicSound.loop = true;
+		musicSound.play().catch(() => {});
+		return;
+	}
+
+	if (activeMediaOverlay) return;
+	let previousMusic = {src: musicSound.src, time: musicSound.currentTime};
+	musicSound.pause();
+
+	let overlay = document.createElement('div');
+	overlay.style.position = 'fixed';
+	overlay.style.left = '0';
+	overlay.style.top = '0';
+	overlay.style.width = '100vw';
+	overlay.style.height = '100vh';
+	overlay.style.background = '#000';
+	overlay.style.opacity = '0';
+	overlay.style.transition = 'opacity 450ms ease';
+	overlay.style.zIndex = '999999';
+
+	let video = document.createElement('video');
+	video.src = url;
+	video.autoplay = true;
+	video.controls = false;
+	video.style.width = '100%';
+	video.style.height = '100%';
+	video.style.objectFit = 'contain';
+	overlay.appendChild(video);
+	document.body.appendChild(overlay);
+	requestAnimationFrame(() => {
+		overlay.style.opacity = '1';
+	});
+	activeMediaOverlay = overlay;
+
+	let finish = () => {
+		overlay.style.opacity = '0';
+		setTimeout(() => {
+			if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+			activeMediaOverlay = null;
+			musicSound.src = previousMusic.src;
+			musicSound.currentTime = previousMusic.time;
+			musicSound.play().catch(() => {});
+		}, 450);
+	};
+
+	video.addEventListener('ended', finish);
+	video.addEventListener('error', finish);
+	overlay.addEventListener('click', finish);
+}
+
+function prepareMediaTriggerLinksForCurrentLevel() {
+	for (let y = 0; y < levelHeight; y++) {
+		for (let x = 0; x < levelWidth; x++) {
+			let t = thisLevel[y][x];
+			if (!mediaTriggerTiles[t]) continue;
+			let key = mediaLinkKey(x, y);
+			if (typeof mediaTriggerLinks[key] === 'string' && mediaTriggerLinks[key].trim().length > 0) continue;
+			let userInput = window.prompt('Enter a GitHub rawusercontent media link for [M] tile:', '');
+			if (typeof userInput === 'string' && userInput.trim().length > 0) {
+				mediaTriggerLinks[key] = userInput.trim();
+			}
+		}
+	}
+}
+
+function checkMediaTriggers(i) {
+	if (!char[i] || char[i].charState < 7) return;
+	if (!Array.isArray(char[i].mediaTriggersPressed)) char[i].mediaTriggersPressed = [];
+	let touching = [];
+
+	for (let y = Math.floor((char[i].y - char[i].h) / 30); y <= Math.floor((char[i].y - 0.01) / 30); y++) {
+		for (let x = Math.floor((char[i].x - char[i].w) / 30); x <= Math.floor((char[i].x + char[i].w) / 30); x++) {
+			if (outOfRange(x, y)) continue;
+			let tileId = thisLevel[y][x];
+			if (!mediaTriggerTiles[tileId]) continue;
+			let key = `${x},${y}`;
+			touching.push(key);
+			if (char[i].mediaTriggersPressed.includes(key)) continue;
+
+			let link = mediaTriggerLinks[mediaLinkKey(x, y)];
+			if (typeof link === 'string' && link.length > 0) playMediaTrigger(link);
+			char[i].mediaTriggersPressed.push(key);
+		}
+	}
+
+	char[i].mediaTriggersPressed = char[i].mediaTriggersPressed.filter(key => touching.includes(key));
 }
 
 function checkButton2(i, bypass) {
@@ -8499,6 +8777,7 @@ function draw() {
 			break;
 
 		case 3:
+			if (levelTimer % 2 == 0) updateCustomFluidTiles();
 			// TODO: Look into if it would be more accurate to the Flash version if this were moved to after the game logic.
 			// ctx.drawImage(
 			// 	osc4,
@@ -8510,6 +8789,7 @@ function draw() {
 			ctx.drawImage(osc4, -Math.floor(-cameraX + shakeX) + Math.floor( (-cameraX+shakeX)/3), -Math.floor(-cameraY + shakeY) + Math.floor( Math.max( -cameraY/3 - ((bgXScale>bgYScale)?Math.max(0,(bgXScale*5.4-540)/2):0), 540 - osc4.height / pixelRatio) + shakeY/3), osc4.width / pixelRatio, osc4.height / pixelRatio);
 			updateCustomTriggersRuntime();
 			drawLevel(ctx);
+			updateAndDrawActiveTileTweens(ctx);
 
 			if (wipeTimer == 30) {
 				if (transitionType == 0) {
