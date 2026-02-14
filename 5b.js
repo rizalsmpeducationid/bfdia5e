@@ -2263,7 +2263,14 @@ let svgChars = new Array(charD.length);
 let svgBodyParts = new Array(63);
 let customCharacterSpriteData = {};
 let customBlockData = [];
-let customTilePhysics = {};
+let customTriggerData = [];
+let customTriggerTiles = {};
+let lcPropertiesMode = false;
+let lcSelectedTrigger = null;
+let lcTriggerLinks = [];
+let firedCustomTriggers = {};
+let pendingTriggerEvents = [];
+let lcTriggerFlashFrames = {};
 let svgHPRCBubble = new Array(5);
 let svgCSBubble;
 let svgHPRCCrank;
@@ -2405,9 +2412,11 @@ function parseLooseBlockData(raw) {
 	let lines = raw.replace(/\r/g, '').split('\n');
 	let tiles = [];
 	let currentTile = {};
+	let currentRecordType = 'tile';
 
 	function flushCurrentTile() {
 		if (Object.keys(currentTile).length > 0) {
+			currentTile.recordtype = currentRecordType;
 			tiles.push(currentTile);
 			currentTile = {};
 		}
@@ -2422,6 +2431,12 @@ function parseLooseBlockData(raw) {
 		if (line.startsWith('//') || line.startsWith('#')) continue;
 		if (/^tile\.$/i.test(line)) {
 			flushCurrentTile();
+			currentRecordType = 'tile';
+			continue;
+		}
+		if (/^trigger\.$/i.test(line)) {
+			flushCurrentTile();
+			currentRecordType = 'trigger';
 			continue;
 		}
 		let kv = line.match(/^([^:：]+)\s*[:：]\s*(.+)$/);
@@ -2682,12 +2697,40 @@ async function loadBlockDataFile() {
 	try {
 		let req = await fetch('blockdata.bd');
 		if (!req.ok) return;
-		customBlockData = parseBlockData(await req.text());
-		console.log(`[Custom Tiles] Loaded ${customBlockData.length} tile definitions from blockdata.bd.`);
+		let parsed = parseBlockData(await req.text());
+		customBlockData = parsed.filter(v => !v || v.recordtype !== 'trigger');
+		customTriggerData = parsed.filter(v => v && v.recordtype === 'trigger');
+		console.log(`[Custom Tiles] Loaded ${customBlockData.length} tile definitions and ${customTriggerData.length} trigger definitions from blockdata.bd.`);
 	} catch (error) {
 		console.warn('[Custom Tiles] Failed to load blockdata.bd:', error);
 		customBlockData = [];
+		customTriggerData = [];
 	}
+}
+
+function parseTriggerCsvList(value) {
+	if (typeof value !== 'string') return [];
+	return value.split(',').map(v => v.trim()).filter(v => v.length > 0 && v !== 'or=');
+}
+
+async function makeTriggerTileSprite(tileName, colorHex) {
+	let c = document.createElement('canvas');
+	c.width = 30 * scaleFactor;
+	c.height = 30 * scaleFactor;
+	let tc = c.getContext('2d');
+	let fill = '#ff00ff';
+	if (typeof colorHex === 'string' && /^([0-9a-f]{6})$/i.test(colorHex.trim())) fill = '#' + colorHex.trim();
+	tc.fillStyle = fill;
+	tc.fillRect(0, 0, c.width, c.height);
+	tc.strokeStyle = '#ffffff';
+	tc.lineWidth = 2 * scaleFactor;
+	tc.strokeRect(2 * scaleFactor, 2 * scaleFactor, c.width - 4 * scaleFactor, c.height - 4 * scaleFactor);
+	tc.fillStyle = '#111111';
+	tc.font = `${10 * scaleFactor}px Helvetica`;
+	tc.textAlign = 'center';
+	tc.textBaseline = 'middle';
+	tc.fillText((tileName || 'TR').substring(0, 2).toUpperCase(), c.width / 2, c.height / 2);
+	return c;
 }
 
 async function registerCustomBlocks(resourceData) {
@@ -2764,6 +2807,32 @@ async function registerCustomBlocks(resourceData) {
 		}
 
 		console.log(`[Custom Tiles] Registered tile ${tileId}: ${tileName}`);
+	}
+
+	for (let i = 0; i < customTriggerData.length; i++) {
+		let trigger = customTriggerData[i];
+		if (!trigger || typeof trigger !== 'object') continue;
+		let tileId = resolveTileId(trigger);
+		while (tileId > blockProperties.length) {
+			blockProperties.push(defaultBlockProperties());
+			tileNames.push('');
+		}
+		let triggerName = readTileValue(trigger, ['name'], `Trigger ${tileId}`);
+		let color = readTileValue(trigger, ['colorident'], 'ff00ff');
+		let sprite = await makeTriggerTileSprite(triggerName, color);
+		let normalized = normalizeTileCanvas(sprite, 30);
+		blockProperties[tileId] = defaultBlockProperties();
+		tileNames[tileId] = `Trigger: ${triggerName}`;
+		svgTiles[tileId] = normalized;
+		svgTilesVB[tileId] = [0, 0, 30, 30];
+		customTriggerTiles[tileId] = {
+			name: triggerName,
+			when: parseTriggerCsvList(readTileValue(trigger, ['whentrigger'], '')),
+			appliedOn: parseTriggerCsvList(readTileValue(trigger, ['appliedon'], '')),
+				func: readTileValue(trigger, ['func'], ''),
+			id: readTileValue(trigger, ['id'], `trigger_${tileId}`)
+		};
+		console.log(`[Custom Triggers] Registered trigger tile ${tileId}: ${triggerName}`);
 	}
 }
 
@@ -4725,7 +4794,7 @@ function getTileDepths() {
 // TODO: precalculate a this stuff and only do the drawing in here. Unless it's actually all necessary. Then you can just leave it.
 function addTileMovieClip(x, y, context) {
 	let t = thisLevel[y][x];
-	if (mediaTriggerTiles[t]) return;
+	if (!!customTriggerTiles[t] && menuScreen != 5) return;
 	if (blockProperties[t][16] > 0) {
 		if (blockProperties[t][16] == 1) {
 			if (renderMode3D) drawExtrudedTile(x, y, t, context);
