@@ -2197,6 +2197,10 @@ let levelTimer = 0;
 let levelTimer2 = 0;
 let bgXScale = 0;
 let bgYScale = 0;
+// Legacy compatibility guards: some user-modified/local cached scripts may still reference these old 3D toggle symbols.
+let force2DMode = true;
+let renderMode3D = false;
+function drawExtrudedTile() {}
 var customTriggerTiles = [];
 var lcTriggerLinks = [];
 window.customTriggerTiles = customTriggerTiles;
