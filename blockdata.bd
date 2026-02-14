@@ -28,6 +28,19 @@ isdeadly: false
 size: 1, 1
 id: "¶"
 
+tile.
+name: water
+imagepath: master/visuals/newblock/water.svg
+cancollide: false
+collision : -
+isswimmable: true
+isdeadly: false
+size: 1, 1
+applyphysics: true
+physicstype: flow
+applygravity: true
+id: "¶"
+
 trigger.
 name: Create
 colorident: FF0FF2
