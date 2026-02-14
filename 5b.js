@@ -2637,6 +2637,22 @@ function resolveTileSize(tile) {
 	return 30;
 }
 
+function parseTriggerType(tile) {
+	let triggerType = readTileValue(tile, ['triggertype'], 'touch');
+	if (typeof triggerType !== 'string') return 'touch';
+	return triggerType.trim().toLowerCase();
+}
+
+function resolveTriggerGroup(tile) {
+	let raw = readTileValue(tile, ['triggergroup', 'switchgroup', 'switchesfor'], 1);
+	let group = Number(raw);
+	if (!Number.isFinite(group)) group = 1;
+	group = Math.floor(group);
+	if (group < 1) group = 1;
+	if (group > switchable.length) group = switchable.length;
+	return group;
+}
+
 function parseBlockData(raw) {
 	let cleaned = raw.trim().replace(/^\uFEFF/, '');
 	try {
@@ -2684,6 +2700,12 @@ async function registerCustomBlocks(resourceData) {
 			physicsType: parsePhysicsType(tile),
 			applyGravity: boolFromTile(tile, ['applygravity'], false),
 		};
+		if (boolFromTile(tile, ['applytrigger'], false)) {
+			customTriggerTiles[tileId] = {
+				triggerType: parseTriggerType(tile),
+				triggerGroup: resolveTriggerGroup(tile)
+			};
+		}
 
 		let source = resolveTileImageSource(tile);
 		if (typeof source === 'string' && source.startsWith('master/')) source = source.substring('master/'.length);
@@ -4906,6 +4928,38 @@ function checkButton(i) {
 			}
 		}
 	}
+	checkCustomTriggers(i);
+}
+
+function checkCustomTriggers(i) {
+	if (!char[i] || char[i].charState < 7) return;
+	if (!Array.isArray(char[i].customTriggersPressed)) char[i].customTriggersPressed = [];
+
+	let currentlyTouching = [];
+	for (let y = Math.floor((char[i].y - char[i].h) / 30); y <= Math.floor((char[i].y - 0.01) / 30); y++) {
+		for (let x = Math.floor((char[i].x - char[i].w) / 30); x <= Math.floor((char[i].x + char[i].w) / 30); x++) {
+			if (outOfRange(x, y)) continue;
+			let tileId = thisLevel[y][x];
+			if (!customTriggerTiles[tileId]) continue;
+			currentlyTouching.push(`${x},${y}`);
+
+			let wasPressed = false;
+			for (let j = 0; j < char[i].customTriggersPressed.length; j++) {
+				if (char[i].customTriggersPressed[j] == `${x},${y}`) {
+					wasPressed = true;
+					break;
+				}
+			}
+
+			if (!wasPressed) {
+				let group = customTriggerTiles[tileId].triggerGroup;
+				if (group >= 1) leverSwitch(group - 1);
+				char[i].customTriggersPressed.push(`${x},${y}`);
+			}
+		}
+	}
+
+	char[i].customTriggersPressed = char[i].customTriggersPressed.filter(key => currentlyTouching.includes(key));
 }
 
 function checkButton2(i, bypass) {
