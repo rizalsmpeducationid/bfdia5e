@@ -2075,6 +2075,7 @@ let diaDropdownType;
 let lcPopUp = false;
 let lcPopUpNextFrame = false;
 let lcPopUpType = 0;
+let lcPropertiesMode = false;
 let tabHeight = 30;
 let tileTabScrollBar = 0;
 let charsTabScrollBar = 0;
@@ -2195,7 +2196,8 @@ let LCRect = [-1, -1, -1, -1];
 let levelTimer = 0;
 let levelTimer2 = 0;
 let bgXScale = 0;
-let bgYscale = 0;
+let bgYScale = 0;
+let customTriggerTiles = [];
 let stopX = 0;
 let stopY = 0;
 let toBounce = false;
@@ -2249,6 +2251,9 @@ let svgShadows = new Array(19);
 let svgTileBorders = new Array(38);
 let svgChars = new Array(charD.length);
 let svgBodyParts = new Array(63);
+let customCharacterSpriteData = {};
+let customBlockData = [];
+let customTilePhysics = {};
 let svgHPRCBubble = new Array(5);
 let svgCSBubble;
 let svgHPRCCrank;
@@ -2324,6 +2329,529 @@ function getVB(base64) {
 	return svg.getAttribute('viewBox').split(' ').map(Number);
 }
 
+function clamp(value, min, max) {
+	return Math.min(Math.max(value, min), max);
+}
+
+function loadExternalImage(path) {
+	return new Promise((resolve, reject) => {
+		let img = new Image();
+		img.onload = () => resolve(img);
+		img.onerror = reject;
+		img.src = path;
+	});
+}
+
+function defaultBlockProperties() {
+	return [false,false,false,false,false,false,false,false,false,false,false,0,0,false,false,true,1,false];
+}
+
+function normalizeBlockProperties(rawProperties) {
+	let props = defaultBlockProperties();
+	if (Array.isArray(rawProperties)) {
+		for (let i = 0; i < Math.min(rawProperties.length, props.length); i++) {
+			props[i] = rawProperties[i];
+		}
+	}
+	if (typeof props[16] !== 'number' || props[16] < 1) props[16] = 1;
+	props[16] = Math.floor(props[16]);
+	if (!Array.isArray(props[18]) && props[16] > 1) {
+		props[18] = new Array(props[16]).fill(0).map((_, i) => i);
+	}
+	return props;
+}
+
+function normalizeTileCanvas(image, tileSize = 30) {
+	let tileCanvas = document.createElement('canvas');
+	tileCanvas.width = tileSize * scaleFactor;
+	tileCanvas.height = tileSize * scaleFactor;
+	let tileCtx = tileCanvas.getContext('2d');
+	tileCtx.imageSmoothingEnabled = false;
+	tileCtx.drawImage(image, 0, 0, tileCanvas.width, tileCanvas.height);
+	return tileCanvas;
+}
+
+function parseLooseBlockValue(valueRaw) {
+	let value = valueRaw.trim();
+	if (value.length == 0) return '';
+	if ((value[0] == '"' && value[value.length - 1] == '"') || (value[0] == "'" && value[value.length - 1] == "'")) {
+		return value.substring(1, value.length - 1);
+	}
+	if (value == 'true') return true;
+	if (value == 'false') return false;
+	if (value == 'null') return null;
+	if (!Number.isNaN(Number(value)) && value != '') return Number(value);
+	if ((value[0] == '[' && value[value.length - 1] == ']') || (value[0] == '{' && value[value.length - 1] == '}')) {
+		try {
+			return JSON.parse(value.replace(/'/g, '"'));
+		} catch (error) {
+			return value;
+		}
+	}
+	return value;
+}
+
+function parseLooseBlockData(raw) {
+	let lines = raw.replace(/\r/g, '').split('\n');
+	let tiles = [];
+	let currentTile = {};
+
+	function flushCurrentTile() {
+		if (Object.keys(currentTile).length > 0) {
+			tiles.push(currentTile);
+			currentTile = {};
+		}
+	}
+
+	for (let i = 0; i < lines.length; i++) {
+		let line = lines[i].trim();
+		if (line.length == 0) {
+			flushCurrentTile();
+			continue;
+		}
+		if (line.startsWith('//') || line.startsWith('#')) continue;
+		if (/^tile\.$/i.test(line)) {
+			flushCurrentTile();
+			continue;
+		}
+		let kv = line.match(/^([^:：]+)\s*[:：]\s*(.+)$/);
+		if (!kv) continue;
+		let key = kv[1]
+			.normalize('NFKC')
+			.replace(/[\u200B-\u200D\uFEFF]/g, '')
+			.trim();
+		let value = parseLooseBlockValue(kv[2]);
+		let normalizedKey = normalizePropertyKey(key);
+
+		let propKey = key;
+		let g = key.match(/^tile(?:([0-9]+))?\.(.+)$/i);
+		if (g) {
+			if (g[1]) {
+				let numericIndex = parseInt(g[1]);
+				while (tiles.length < numericIndex) tiles.push({});
+				if (Object.keys(currentTile).length > 0) flushCurrentTile();
+				if (!tiles[numericIndex - 1]) tiles[numericIndex - 1] = {};
+				currentTile = tiles[numericIndex - 1];
+			}
+			propKey = g[2];
+		}
+
+		currentTile[propKey] = value;
+		currentTile[normalizedKey] = value;
+	}
+
+	flushCurrentTile();
+	tiles = tiles.filter(tile => tile && Object.keys(tile).length > 0);
+	return tiles;
+}
+
+function normalizePropertyKey(key) {
+	return key
+		.normalize('NFKC')
+		.replace(/[\u200B-\u200D\uFEFF]/g, '')
+		.toLowerCase()
+		.replace(/[^a-z0-9]/g, '');
+}
+
+function resolveTileImageSource(tile) {
+	let directKeys = ['image', 'image_path', 'sprite', 'src', 'path', 'texture', 'asset', 'file'];
+	for (let i = 0; i < directKeys.length; i++) {
+		let key = directKeys[i];
+		if (typeof tile[key] === 'string' && tile[key].trim().length > 0) return tile[key].trim();
+	}
+
+	let lookup = {};
+	let keys = Object.keys(tile);
+	for (let i = 0; i < keys.length; i++) {
+		let key = keys[i];
+		if (typeof tile[key] !== 'string') continue;
+		lookup[normalizePropertyKey(key)] = tile[key].trim();
+	}
+
+	let aliases = ['image', 'imagepath', 'sprite', 'spritesheet', 'src', 'filepath', 'texture', 'asset', 'tileimage'];
+	for (let i = 0; i < aliases.length; i++) {
+		let val = lookup[aliases[i]];
+		if (typeof val === 'string' && val.length > 0) return val;
+	}
+
+	let anyPath = Object.values(lookup).find(v => typeof v === 'string' && (v.includes('/') || v.includes('\\')));
+	if (typeof anyPath === 'string' && anyPath.length > 0) return anyPath;
+
+	return '';
+}
+
+function readTileValue(tile, keys, fallback = undefined) {
+	for (let i = 0; i < keys.length; i++) {
+		let key = keys[i];
+		if (typeof tile[key] !== 'undefined') return tile[key];
+		let normalized = normalizePropertyKey(key);
+		if (typeof tile[normalized] !== 'undefined') return tile[normalized];
+	}
+	return fallback;
+}
+
+function boolFromTile(tile, keys, fallback = false) {
+	let raw = readTileValue(tile, keys, fallback);
+	if (typeof raw === 'boolean') return raw;
+	if (typeof raw === 'number') return raw != 0;
+	if (typeof raw === 'string') {
+		let normalized = raw.trim().toLowerCase();
+		if (normalized == 'true' || normalized == 'yes' || normalized == 'y' || normalized == '1') return true;
+		if (normalized == 'false' || normalized == 'no' || normalized == 'n' || normalized == '0' || normalized == '-') return false;
+	}
+	return fallback;
+}
+
+function parseCollisionDirections(raw) {
+	if (Array.isArray(raw)) return raw.map(v => String(v).trim().toLowerCase());
+	if (typeof raw !== 'string') return [];
+	if (raw.trim() == '-') return [];
+	return raw.split(',').map(v => v.trim().toLowerCase()).filter(v => v.length > 0);
+}
+
+function makeTilePropertiesFromTile(tile) {
+	let props = normalizeBlockProperties(tile.properties);
+	if (!Array.isArray(tile.properties)) {
+		let canCollide = boolFromTile(tile, ['cancollide'], false);
+		let collision = parseCollisionDirections(readTileValue(tile, ['collision'], ''));
+		if (canCollide) {
+			props[0] = collision.length == 0 || collision.includes('down');
+			props[1] = collision.length == 0 || collision.includes('up');
+			props[2] = collision.length == 0 || collision.includes('right');
+			props[3] = collision.length == 0 || collision.includes('left');
+		}
+
+		let isDeadly = boolFromTile(tile, ['isdeadly'], false);
+		if (isDeadly) {
+			props[4] = true;
+			props[5] = true;
+			props[6] = true;
+			props[7] = true;
+		}
+
+		let isSwimmable = boolFromTile(tile, ['isswimmable'], false);
+		props[14] = isSwimmable;
+		props[15] = true;
+		props[16] = 1;
+		props[17] = false;
+	}
+	return props;
+}
+
+function parsePhysicsType(tile) {
+	let physicsType = readTileValue(tile, ['physicstype'], '');
+	if (typeof physicsType !== 'string') return '';
+	return physicsType.trim().toLowerCase();
+}
+
+function hasCustomFluidPhysics(tileId) {
+	return (
+		typeof customTilePhysics[tileId] !== 'undefined' &&
+		customTilePhysics[tileId].applyPhysics &&
+		customTilePhysics[tileId].physicsType == 'flow'
+	);
+}
+
+function canFluidMoveInto(x, y, fromTileId) {
+	if (outOfRange(x, y)) return false;
+	let target = thisLevel[y][x];
+	if (target == fromTileId) return false;
+	if (target != 0) {
+		if (blockProperties[target][0] || blockProperties[target][1] || blockProperties[target][2] || blockProperties[target][3]) return false;
+		if (hasCustomFluidPhysics(target)) return false;
+		return false;
+	}
+	return true;
+}
+
+function fluidUpdateSwap(x1, y1, x2, y2) {
+	let t1 = thisLevel[y1][x1];
+	let t2 = thisLevel[y2][x2];
+	thisLevel[y1][x1] = t2;
+	thisLevel[y2][x2] = t1;
+
+	let tf = tileFrames[y1][x1];
+	tileFrames[y1][x1] = tileFrames[y2][x2];
+	tileFrames[y2][x2] = tf;
+}
+
+function updateCustomFluidTiles() {
+	if (!customTilePhysics || Object.keys(customTilePhysics).length == 0) return;
+	let changed = false;
+	for (let y = levelHeight - 2; y >= 0; y--) {
+		for (let x = 0; x < levelWidth; x++) {
+			let tileId = thisLevel[y][x];
+			if (!hasCustomFluidPhysics(tileId)) continue;
+
+			let physics = customTilePhysics[tileId];
+			if (physics.applyGravity && canFluidMoveInto(x, y + 1, tileId)) {
+				fluidUpdateSwap(x, y, x, y + 1);
+				changed = true;
+				continue;
+			}
+
+			let dirs = Math.random() < 0.5 ? [-1, 1] : [1, -1];
+			for (let i = 0; i < dirs.length; i++) {
+				let nx = x + dirs[i];
+				if (canFluidMoveInto(nx, y, tileId)) {
+					fluidUpdateSwap(x, y, nx, y);
+					changed = true;
+					break;
+				}
+				if (canFluidMoveInto(nx, y + 1, tileId)) {
+					fluidUpdateSwap(x, y, nx, y + 1);
+					changed = true;
+					break;
+				}
+			}
+		}
+	}
+
+	if (changed) {
+		tileDepths = [[], [], [], []];
+		getTileDepths();
+		calculateShadowsAndBorders();
+		drawStaticTiles();
+	}
+}
+
+function resolveTileId(tile) {
+	let rawId = readTileValue(tile, ['id'], undefined);
+	if (Number.isInteger(rawId) && rawId >= 0) return rawId;
+	if (typeof rawId === 'string') {
+		let trimmed = rawId.trim();
+		if (!Number.isNaN(Number(trimmed)) && trimmed != '') {
+			let numeric = Math.floor(Number(trimmed));
+			if (numeric >= 0) return numeric;
+		}
+	}
+	return blockProperties.length;
+}
+
+function resolveTileSize(tile) {
+	let sizeRaw = readTileValue(tile, ['size', 'tile_size'], '1,1');
+	if (typeof sizeRaw === 'string') {
+		let parts = sizeRaw.split(',').map(v => Number(v.trim()));
+		if (parts.length >= 2 && parts[0] == 1 && parts[1] == 1) return 30;
+	}
+	return 30;
+}
+
+function parseTriggerType(tile) {
+	let triggerType = readTileValue(tile, ['triggertype'], 'touch');
+	if (typeof triggerType !== 'string') return 'touch';
+	return triggerType.trim().toLowerCase();
+}
+
+function resolveTriggerGroup(tile) {
+	let raw = readTileValue(tile, ['triggergroup', 'switchgroup', 'switchesfor'], 1);
+	let group = Number(raw);
+	if (!Number.isFinite(group)) group = 1;
+	group = Math.floor(group);
+	if (group < 1) group = 1;
+	if (group > switchable.length) group = switchable.length;
+	return group;
+}
+
+function parseBlockData(raw) {
+	let cleaned = raw.trim().replace(/^\uFEFF/, '');
+	try {
+		let parsed = JSON.parse(cleaned);
+		if (Array.isArray(parsed)) return parsed;
+		if (Array.isArray(parsed.tiles)) return parsed.tiles;
+	} catch (jsonError) {
+		// Fallback for .bd loose format (e.g. tile.name: Example)
+	}
+	let loose = parseLooseBlockData(cleaned);
+	if (loose.length > 0) return loose;
+	console.warn('[Custom Tiles] blockdata.bd was loaded, but no valid tile records were found.');
+	return [];
+}
+
+async function loadBlockDataFile() {
+	try {
+		let req = await fetch('blockdata.bd');
+		if (!req.ok) return;
+		customBlockData = parseBlockData(await req.text());
+		console.log(`[Custom Tiles] Loaded ${customBlockData.length} tile definitions from blockdata.bd.`);
+	} catch (error) {
+		console.warn('[Custom Tiles] Failed to load blockdata.bd:', error);
+		customBlockData = [];
+	}
+}
+
+async function registerCustomBlocks(resourceData) {
+	for (let i = 0; i < customBlockData.length; i++) {
+		let tile = customBlockData[i];
+		if (!tile || typeof tile !== 'object') continue;
+
+		let tileId = resolveTileId(tile);
+		while (tileId > blockProperties.length) {
+			blockProperties.push(defaultBlockProperties());
+			tileNames.push('');
+		}
+
+		let tileName = readTileValue(tile, ['name'], `Custom Tile ${tileId}`);
+		tileName = typeof tileName === 'string' && tileName.length > 0 ? tileName : `Custom Tile ${tileId}`;
+		let tileSize = clamp(resolveTileSize(tile), 30, 30);
+		let props = makeTilePropertiesFromTile(tile);
+		customTilePhysics[tileId] = {
+			applyPhysics: boolFromTile(tile, ['applyphysics'], false),
+			physicsType: parsePhysicsType(tile),
+			applyGravity: boolFromTile(tile, ['applygravity'], false),
+		};
+		if (boolFromTile(tile, ['applytrigger'], false)) {
+			customTriggerTiles[tileId] = {
+				triggerType: parseTriggerType(tile),
+				triggerGroup: resolveTriggerGroup(tile)
+			};
+		}
+
+		let source = resolveTileImageSource(tile);
+		if (typeof source === 'string' && source.startsWith('master/')) source = source.substring('master/'.length);
+		let sprite;
+		if (!(typeof source === 'string' && source.length > 0)) {
+			console.warn(`[Custom Tiles] Tile ${tileId} is missing image path/base64; skipping. Keys seen: ${Object.keys(tile).join(', ')}`);
+			continue;
+		}
+
+		try {
+			if (source.startsWith('data:image/')) sprite = await createImage(source);
+			else sprite = await loadExternalImage(source);
+		} catch (error) {
+			console.warn(`[Custom Tiles] Failed to load image for tile ${tileId} from ${source}; using fallback tile image.`, error);
+			sprite = await createImage(resourceData['blocks/b0001.svg']);
+		}
+
+		let normalized = normalizeTileCanvas(sprite, tileSize);
+		blockProperties[tileId] = props;
+		tileNames[tileId] = tileName;
+		svgTiles[tileId] = normalized;
+		svgTilesVB[tileId] = [0, 0, tileSize, tileSize];
+
+		if (tile.image_in_images6_key && typeof resourceData[tile.image_in_images6_key] === 'undefined') {
+			resourceData[tile.image_in_images6_key] = source;
+		}
+
+		console.log(`[Custom Tiles] Registered tile ${tileId}: ${tileName}`);
+	}
+}
+
+function registerCustomCharacter(characterConfig) {
+	if (!characterConfig || typeof characterConfig !== 'object') return;
+
+	let displayName = characterConfig.display_name || characterConfig.character_id || 'Custom Character';
+	let hitbox = characterConfig.mechanics?.collision?.hitbox || {};
+	let hitboxWidth = clamp(Number(hitbox.width) || 32, 8, 200);
+	let hitboxHeight = clamp(Number(hitbox.height) || 64, 8, 300);
+	let characterScale = clamp(Number(characterConfig.mechanics?.collision?.character_scale) || 1, 0.2, 4);
+
+	let halfWidth = (hitboxWidth * characterScale) / 2;
+	let fullHeight = hitboxHeight * characterScale;
+	let speed = Number(characterConfig.mechanics?.movement?.speed);
+	let friction = clamp(Number.isFinite(speed) ? 0.9 - speed * 0.03 : 0.78, 0.45, 0.9);
+	let heatSeconds = Number(characterConfig.environment_stats?.thermal_resistance?.max_heat_duration_seconds);
+	let heatSpeed = clamp(Number.isFinite(heatSeconds) && heatSeconds > 0 ? 50 / heatSeconds : 1, 0.2, 8);
+	let hasArms = characterConfig.mechanics?.has_arms !== false;
+	let gifPath = characterConfig.placeholder_gif_path || 'data/newchar/firey.gif';
+
+	let charId = charD.length;
+	charD.push([
+		halfWidth,
+		fullHeight,
+		0.4,
+		Math.round(fullHeight * 0.45),
+		friction,
+		true,
+		heatSpeed,
+		1,
+		hasArms,
+		10
+	]);
+	names.push(displayName);
+	charModels.push({
+		firemat: {a:-0.35,b:0,c:0,d:0.35,tx:0,ty:-fullHeight * 0.55},
+		burstmat: {a:1,b:0,c:0,d:1,tx:0,ty:-fullHeight * 0.6},
+		charimgmat: {a:0.4,b:0,c:0,d:0.4,tx:0,ty:0}
+	});
+	customCharacterSpriteData[charId] = {
+		gifPath,
+		vb: [-halfWidth, -fullHeight, halfWidth * 2, fullHeight]
+	};
+	console.log(`[Custom Character] Registered "${displayName}" as id ${charId} using gif: ${gifPath}`);
+}
+
+function extractTopLevelJsonObjects(raw) {
+	let objects = [];
+	let start = -1;
+	let depth = 0;
+	let inString = false;
+	let quoteChar = '';
+	let escaped = false;
+
+	for (let i = 0; i < raw.length; i++) {
+		let ch = raw[i];
+		if (inString) {
+			if (escaped) {
+				escaped = false;
+				continue;
+			}
+			if (ch == '\\') {
+				escaped = true;
+				continue;
+			}
+			if (ch == quoteChar) {
+				inString = false;
+				quoteChar = '';
+			}
+			continue;
+		}
+
+		if (ch == '"' || ch == "'") {
+			inString = true;
+			quoteChar = ch;
+			continue;
+		}
+
+		if (ch == '{') {
+			if (depth == 0) start = i;
+			depth++;
+		} else if (ch == '}') {
+			if (depth > 0) depth--;
+			if (depth == 0 && start >= 0) {
+				objects.push(raw.substring(start, i + 1));
+				start = -1;
+			}
+		}
+	}
+
+	return objects;
+}
+
+function parseCharacterData(raw) {
+	let cleaned = raw.trim().replace(/^\uFEFF/, '');
+	try {
+		let parsed = JSON.parse(cleaned);
+		if (Array.isArray(parsed)) return parsed;
+		if (Array.isArray(parsed.characters)) return parsed.characters;
+		if (parsed && typeof parsed == 'object') return [parsed];
+	} catch (error) {
+		// fallback handling below
+	}
+
+	let chunks = extractTopLevelJsonObjects(cleaned);
+	let parsedChunks = [];
+	for (let i = 0; i < chunks.length; i++) {
+		try {
+			let parsed = JSON.parse(chunks[i]);
+			if (parsed && typeof parsed == 'object') parsedChunks.push(parsed);
+		} catch (error) {
+			continue;
+		}
+	}
+	return parsedChunks;
+}
+
 function getPixelRatio(quality) {
 	// Round the device pixel ratio to the nearest integer in log base 2
 	// This is so that if you have the page zoomed or have some scale factor on Windows
@@ -2364,6 +2892,20 @@ async function loadingScreen() {
 	let req = await fetch('data/levels.txt');
 	levelsString = await req.text();
 	loadLevels();
+	await loadBlockDataFile();
+
+	try {
+		let customCharacterReq = await fetch('characterdata.json');
+		if (customCharacterReq.ok) {
+			let customCharacterDataRaw = await customCharacterReq.text();
+			let customCharacters = parseCharacterData(customCharacterDataRaw);
+			for (let i = 0; i < customCharacters.length; i++) {
+				registerCustomCharacter(customCharacters[i]);
+			}
+		}
+	} catch (error) {
+		console.warn('[Custom Character] Failed to load characterdata.json:', error);
+	}
 
 	req = await fetch('data/images6.json');
 	let resourceData = await req.json();
@@ -2392,6 +2934,7 @@ async function loadingScreen() {
 			}
 		}
 	}
+	await registerCustomBlocks(resourceData);
 	for (let i = 0; i < svgLevers.length; i++) {
 		svgLevers[i] = await createImage(resourceData['blocks/b' + i.toString().padStart(2, '0') + 'lever.svg']);
 	}
@@ -2402,6 +2945,16 @@ async function loadingScreen() {
 		svgTileBorders[i] = await createImage(resourceData['borders/tb' + i.toString().padStart(4, '0') + '.svg']);
 	}
 	for (let i = 0; i < charD.length; i++) {
+		if (typeof customCharacterSpriteData[i] !== 'undefined') {
+			try {
+				svgChars[i] = await loadExternalImage(customCharacterSpriteData[i].gifPath);
+			} catch (error) {
+				console.warn(`[Custom Character] Failed to load ${customCharacterSpriteData[i].gifPath}; using fallback sprite.`, error);
+				svgChars[i] = await createImage(resourceData['entities/e0000.svg']);
+			}
+			svgCharsVB[i] = customCharacterSpriteData[i].vb;
+			continue;
+		}
 		let id = i.toString().padStart(4, '0');
 		if (charD[i][7] < 1) continue;
 		else if (charD[i][7] == 1) {
@@ -3878,7 +4431,7 @@ function drawCutScene() {
 		ctx.fillStyle = '#ce6fce';
 		ctx.fillRect(bubLoc.x + 10, bubLoc.y + 10, 80, 80);
 		ctx.save();
-		let charimg = svgChars[char[currdiachar].id];
+		let charimg = Array.isArray(svgChars[char[currdiachar].id]) ? svgChars[char[currdiachar].id][0] : svgChars[char[currdiachar].id];
 		if (Array.isArray(charimg)) charimg = charimg[0];
 		let charimgmat = charModels[char[currdiachar].id].charimgmat;
 		ctx.transform(
@@ -3916,7 +4469,7 @@ function drawHPRCBubbleCharImg(dead, sc, xoff) {
 		(charimgmat.tx * sc) / 2 + xoff,
 		(charimgmat.ty * sc) / 2 - 44
 	);
-	let charimg = svgChars[char[dead].id];
+	let charimg = Array.isArray(svgChars[char[dead].id]) ? svgChars[char[dead].id][0] : svgChars[char[dead].id];
 	if (Array.isArray(charimg)) charimg = charimg[0];
 	ctx.drawImage(charimg, -charimg.width / (scaleFactor*2), -charimg.height / (scaleFactor*2), charimg.width / scaleFactor, charimg.height / scaleFactor);
 	ctx.restore();
@@ -4361,6 +4914,38 @@ function checkButton(i) {
 			}
 		}
 	}
+	checkCustomTriggers(i);
+}
+
+function checkCustomTriggers(i) {
+	if (!char[i] || char[i].charState < 7) return;
+	if (!Array.isArray(char[i].customTriggersPressed)) char[i].customTriggersPressed = [];
+
+	let currentlyTouching = [];
+	for (let y = Math.floor((char[i].y - char[i].h) / 30); y <= Math.floor((char[i].y - 0.01) / 30); y++) {
+		for (let x = Math.floor((char[i].x - char[i].w) / 30); x <= Math.floor((char[i].x + char[i].w) / 30); x++) {
+			if (outOfRange(x, y)) continue;
+			let tileId = thisLevel[y][x];
+			if (!customTriggerTiles[tileId]) continue;
+			currentlyTouching.push(`${x},${y}`);
+
+			let wasPressed = false;
+			for (let j = 0; j < char[i].customTriggersPressed.length; j++) {
+				if (char[i].customTriggersPressed[j] == `${x},${y}`) {
+					wasPressed = true;
+					break;
+				}
+			}
+
+			if (!wasPressed) {
+				let group = customTriggerTiles[tileId].triggerGroup;
+				if (group >= 1) leverSwitch(group - 1);
+				char[i].customTriggersPressed.push(`${x},${y}`);
+			}
+		}
+	}
+
+	char[i].customTriggersPressed = char[i].customTriggersPressed.filter(key => currentlyTouching.includes(key));
 }
 
 function checkButton2(i, bypass) {
@@ -5742,7 +6327,7 @@ function drawLCCharInfo(i, y) {
 	ctx.fillRect(665 + 240 - charInfoHeight * 1.5, y, charInfoHeight * 1.5, charInfoHeight);
 	let charimgmat = charModels[myLevelChars[1][i][0]].charimgmat;
 	if (typeof charimgmat !== 'undefined') {
-		let charimg = svgChars[myLevelChars[1][i][0]];
+		let charimg = Array.isArray(svgChars[myLevelChars[1][i][0]]) ? svgChars[myLevelChars[1][i][0]][0] : svgChars[myLevelChars[1][i][0]];
 		if (Array.isArray(charimg)) charimg = charimg[0];
 		let sc = charInfoHeight / 32;
 		ctx.save();
@@ -7816,6 +8401,7 @@ function draw() {
 			break;
 
 		case 3:
+			if (levelTimer % 2 == 0) updateCustomFluidTiles();
 			// TODO: Look into if it would be more accurate to the Flash version if this were moved to after the game logic.
 			// ctx.drawImage(
 			// 	osc4,
@@ -9410,7 +9996,7 @@ function draw() {
 
 				let charimgmat = charModels[dialogueTabCharHoverChar].charimgmat;
 				if (typeof charimgmat !== 'undefined') {
-					let charimg = svgChars[dialogueTabCharHoverChar];
+					let charimg = Array.isArray(svgChars[dialogueTabCharHoverChar]) ? svgChars[dialogueTabCharHoverChar][0] : svgChars[dialogueTabCharHoverChar];
 					if (Array.isArray(charimg)) charimg = charimg[0];
 					let sc = charInfoHeight / 32;
 					ctx.save();
